@@ -6,8 +6,12 @@
 """
 
 import os
+import time
+from typing import Literal
 
 from google import genai
+from google.genai import errors
+from pydantic import BaseModel
 
 from .excavator import Decision
 from .models import EvidenceChain
@@ -43,6 +47,37 @@ _DECIDE_PROMPT = """あなたはコードの歴史を発掘する「調査官」
 """
 
 
+class _DecisionArgs(BaseModel):
+    """Gemini structured output 用の型付き引数。
+
+    Developer API は additionalProperties（自由 dict）非対応のため、
+    全ツールの引数を optional なフラット構造で受けて Decision.args に詰め直す。
+    """
+
+    path: str | None = None
+    line: int | None = None
+    sha: str | None = None
+    number: int | None = None
+
+
+class _LlmDecision(BaseModel):
+    tool: Literal["blame_line", "get_commit", "get_pr", "get_issue", "finish"]
+    args: _DecisionArgs
+    reason: str
+
+
+def _with_quota_backoff(call, attempts: int = 4):
+    """429（無料枠は 5 req/min）でもデモを止めないためのバックオフ。"""
+    for i in range(attempts):
+        try:
+            return call()
+        except errors.ClientError as exc:
+            if exc.code != 429 or i == attempts - 1:
+                raise
+            time.sleep(15 * (i + 1))
+    raise RuntimeError("unreachable")
+
+
 class GeminiAgents:
     def __init__(self, api_key: str | None = None) -> None:
         self._client = genai.Client(api_key=api_key or os.environ["GEMINI_API_KEY"])
@@ -53,18 +88,27 @@ class GeminiAgents:
             context=chain.as_context() or "（まだ何もない）",
             leads=leads or "（なし）",
         )
-        response = self._client.models.generate_content(
-            model=EXCAVATOR_MODEL,
-            contents=prompt,
-            config={
-                "response_mime_type": "application/json",
-                "response_schema": Decision,
-            },
+        response = _with_quota_backoff(
+            lambda: self._client.models.generate_content(
+                model=EXCAVATOR_MODEL,
+                contents=prompt,
+                config={
+                    "response_mime_type": "application/json",
+                    "response_schema": _LlmDecision,
+                },
+            )
         )
-        return response.parsed
+        parsed: _LlmDecision = response.parsed
+        return Decision(
+            tool=parsed.tool,
+            args=parsed.args.model_dump(exclude_none=True),
+            reason=parsed.reason,
+        )
 
     def generate(self, prompt: str) -> str:
-        response = self._client.models.generate_content(
-            model=HISTORIAN_MODEL, contents=prompt
+        response = _with_quota_backoff(
+            lambda: self._client.models.generate_content(
+                model=HISTORIAN_MODEL, contents=prompt
+            )
         )
         return response.text or ""
