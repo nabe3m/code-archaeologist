@@ -66,8 +66,9 @@ class Excavator:
                 )
                 continue
 
-            leads = [l for l in leads if l != {"tool": decision.tool, "args": decision.args}]
-            leads.extend(l for l in new_leads if l not in leads)
+            executed = {"tool": decision.tool, "args": decision.args}
+            leads = [lead for lead in leads if lead != executed]
+            leads.extend(lead for lead in new_leads if lead not in leads)
             for evidence in found:
                 if chain.add(evidence):
                     yield DigEvent(
