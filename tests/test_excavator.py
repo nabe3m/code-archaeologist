@@ -184,8 +184,8 @@ def test_decider_sees_accumulated_evidence_and_leads():
         ]
     )
     run_dig(StubToolbox(), decide)
-    first_chain, _, first_target = decide.seen[0]
-    second_chain, second_leads, _ = decide.seen[1]
+    first_chain, _, first_target, _ = decide.seen[0]
+    second_chain, second_leads, _, _ = decide.seen[1]
     assert len(first_chain) == 0
     assert len(second_chain) == 2  # PR 本文 + コメント
     # PR が参照していた Issue #12 が「次の掘り先候補」として提示される
