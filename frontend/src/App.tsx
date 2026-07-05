@@ -7,10 +7,10 @@ import { AnswerPane } from "./components/AnswerPane";
 type Phase = "idle" | "digging" | "done" | "failed";
 
 const DEMO: DigRequest = {
-  repo: "nabe3m/code-archaeologist",
-  path: "src/code_archaeologist/excavator.py",
-  line: 30,
-  question: "この decide 関数はなぜ注入式になっているの?",
+  repo: "nabe3m/demo-repo",
+  path: "orders/api.py",
+  line: 14,
+  question: "この sleep(3) はなぜあるの? 今も必要?",
 };
 
 export default function App() {
