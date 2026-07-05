@@ -38,8 +38,9 @@ def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-@app.get("/healthz")
-def healthz() -> dict:
+# /healthz は Google Frontend の予約パスでエッジに横取りされるため /api/health を使う
+@app.get("/api/health")
+def health() -> dict:
     return {"ok": True}
 
 

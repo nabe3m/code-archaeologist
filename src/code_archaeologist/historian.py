@@ -46,6 +46,13 @@ class Historian:
         self._generate = generate
 
     def narrate(self, question: str, chain: EvidenceChain) -> Answer:
+        if not chain.items:
+            # 証拠ゼロで LLM に回答させると存在しない引用を捏造するため、正直に返す
+            return Answer(
+                text="調査しましたが、この質問に答えられる証拠が見つかりませんでした。"
+                "対象のファイルパス・行番号が正しいか確認してください。",
+                sources=[],
+            )
         prompt = _PROMPT_TEMPLATE.format(question=question, context=chain.as_context())
         text = self._generate(prompt)
         cited = sorted({int(n) for n in _CITATION.findall(text)})

@@ -10,4 +10,5 @@ COPY . .
 RUN uv sync --frozen --no-dev
 
 EXPOSE 8080
-CMD ["sh", "-c", "uv run uvicorn code_archaeologist.web:app --host 0.0.0.0 --port ${PORT:-8080}"]
+# uv run は起動時に再 sync が走る（dev 依存まで入る）ため venv の uvicorn を直接叩く
+CMD ["sh", "-c", "/app/.venv/bin/uvicorn code_archaeologist.web:app --host 0.0.0.0 --port ${PORT:-8080}"]

@@ -55,8 +55,8 @@ def scripted_decider(decisions):
     seen_contexts = []
     iterator = iter(decisions)
 
-    def decide(question, chain, leads):
-        seen_contexts.append((chain.model_copy(deep=True), list(leads)))
+    def decide(question, chain, leads, target):
+        seen_contexts.append((chain.model_copy(deep=True), list(leads), dict(target)))
         return next(iterator)
 
     decide.seen = seen_contexts
@@ -145,9 +145,11 @@ def test_decider_sees_accumulated_evidence_and_leads():
         ]
     )
     run_dig(StubToolbox(), decide)
-    first_chain, _ = decide.seen[0]
-    second_chain, second_leads = decide.seen[1]
+    first_chain, _, first_target = decide.seen[0]
+    second_chain, second_leads, _ = decide.seen[1]
     assert len(first_chain) == 0
     assert len(second_chain) == 2  # PR 本文 + コメント
     # PR が参照していた Issue #12 が「次の掘り先候補」として提示される
     assert {"tool": "get_issue", "args": {"number": 12}} in second_leads
+    # LLM がパスを幻覚しないよう、正確な調査対象を毎回渡す
+    assert first_target == {"owner": "o", "repo": "r", "path": "src/api.py", "line": 5}

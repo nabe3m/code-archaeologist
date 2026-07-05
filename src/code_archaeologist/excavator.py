@@ -19,7 +19,9 @@ class Decision(BaseModel):
     reason: str
 
 
-DecideFn = Callable[[str, EvidenceChain, list[dict]], Decision]
+# decide(question, chain, leads, target) — target は owner/repo/path/line。
+# LLM がファイルパス等を幻覚しないよう、正確な調査対象を毎回渡す。
+DecideFn = Callable[[str, EvidenceChain, list[dict], dict], Decision]
 
 
 class Excavator:
@@ -33,14 +35,12 @@ class Excavator:
     ) -> Iterator[DigEvent]:
         chain = EvidenceChain()
         leads: list[dict] = [{"tool": "blame_line", "args": {"path": path, "line": line}}]
+        target = {"owner": owner, "repo": repo, "path": path, "line": line}
         stopped_by = "finish"
 
         yield DigEvent(
             type="dig_started",
-            payload={
-                "question": question,
-                "target": {"owner": owner, "repo": repo, "path": path, "line": line},
-            },
+            payload={"question": question, "target": target},
         )
 
         steps = 0
@@ -48,7 +48,7 @@ class Excavator:
             if steps >= self._max_steps:
                 stopped_by = "max_steps"
                 break
-            decision = self._decide(question, chain, leads)
+            decision = self._decide(question, chain, leads, target)
             steps += 1
             yield DigEvent(
                 type="dig_decision",

@@ -60,6 +60,14 @@ def test_answer_carries_text_and_cited_sources():
     assert answer.sources[1].label == "issue #12"
 
 
+def test_empty_chain_returns_honest_no_evidence_answer_without_calling_llm():
+    generate = capture_prompt_llm("呼ばれてはいけない")
+    answer = Historian(generate).narrate("なぜ?", EvidenceChain())
+    assert generate.prompts == []  # 証拠ゼロで LLM に回答させると引用を捏造する
+    assert answer.sources == []
+    assert "証拠" in answer.text and "見つかりません" in answer.text
+
+
 def test_sources_only_include_cited_numbers():
     generate = capture_prompt_llm("答えは [2] だけを引用する。")
     answer = Historian(generate).narrate("なぜ?", build_chain())

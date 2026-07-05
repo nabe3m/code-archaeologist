@@ -26,6 +26,11 @@ _DECIDE_PROMPT = """あなたはコードの歴史を発掘する「調査官」
 ## 質問
 {question}
 
+## 調査対象（この値を一字一句そのまま使うこと。パスや行番号を創作・変形しない）
+- リポジトリ: {owner}/{repo}
+- ファイル: {path}
+- 行番号: {line}
+
 ## これまでに発掘した証拠
 {context}
 
@@ -42,7 +47,7 @@ _DECIDE_PROMPT = """あなたはコードの歴史を発掘する「調査官」
 ## 判断基準
 - 証拠が空なら、まず blame_line で起点を作る
 - 「なぜ」に直結する一次情報（PR 議論・Issue）を優先して掘る
-- 同じ場所を二度掘らない。十分に揃ったら潔く finish
+- 同じ場所を二度掘らない。エラーになった呼び出しを同じ引数で繰り返さない。十分に揃ったら潔く finish
 - reason には「何を根拠に、なぜそこを掘るのか」を日本語で1文で書く（ユーザーに表示される）
 """
 
@@ -66,13 +71,16 @@ class _LlmDecision(BaseModel):
     reason: str
 
 
+_RETRYABLE = {429, 500, 503, 504}  # 無料枠クォータ / 一時的な高負荷
+
+
 def _with_quota_backoff(call, attempts: int = 4):
-    """429（無料枠は 5 req/min）でもデモを止めないためのバックオフ。"""
+    """429/5xx でもデモを止めないためのバックオフ。"""
     for i in range(attempts):
         try:
             return call()
-        except errors.ClientError as exc:
-            if exc.code != 429 or i == attempts - 1:
+        except errors.APIError as exc:
+            if exc.code not in _RETRYABLE or i == attempts - 1:
                 raise
             time.sleep(15 * (i + 1))
     raise RuntimeError("unreachable")
@@ -82,11 +90,14 @@ class GeminiAgents:
     def __init__(self, api_key: str | None = None) -> None:
         self._client = genai.Client(api_key=api_key or os.environ["GEMINI_API_KEY"])
 
-    def decide(self, question: str, chain: EvidenceChain, leads: list[dict]) -> Decision:
+    def decide(
+        self, question: str, chain: EvidenceChain, leads: list[dict], target: dict
+    ) -> Decision:
         prompt = _DECIDE_PROMPT.format(
             question=question,
             context=chain.as_context() or "（まだ何もない）",
             leads=leads or "（なし）",
+            **target,
         )
         response = _with_quota_backoff(
             lambda: self._client.models.generate_content(
