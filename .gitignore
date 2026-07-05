@@ -1,0 +1,22 @@
+# Secrets — never commit
+.env
+*.pem
+service-account*.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+
+# Local caches & artifacts
+.cache/
+*.log
+.DS_Store
