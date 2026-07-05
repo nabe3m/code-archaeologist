@@ -111,6 +111,13 @@ def toolbox(tmp_path, requests_seen):
             )
         if path == "/repos/o/r/issues/12/comments":
             return httpx.Response(200, json=[])
+        if path == "/repos/o/r/contents/src/api.py":
+            import base64
+
+            content = base64.b64encode(b"import time\n\ntime.sleep(3)\n").decode()
+            return httpx.Response(
+                200, json={"content": content, "encoding": "base64"}
+            )
         return httpx.Response(404, json={"message": "not found"})
 
     return GitHubToolbox(
@@ -157,6 +164,12 @@ def test_get_pr_returns_discussion_and_referenced_issues(toolbox):
     assert result.comments[0].kind == "pr_comment"
     # 本文の #12 とコメントの #7 を拾い、自分自身 (#42) は含めない
     assert sorted(result.referenced_issues) == [7, 12]
+
+
+def test_get_file_returns_decoded_text(toolbox):
+    # UI の左ペイン（対象行ハイライト付きコード表示）用
+    text = toolbox.get_file("o", "r", "src/api.py")
+    assert text == "import time\n\ntime.sleep(3)\n"
 
 
 def test_get_issue_returns_evidence(toolbox):

@@ -44,6 +44,19 @@ def health() -> dict:
     return {"ok": True}
 
 
+@app.get("/api/file")
+def get_file(repo: str, path: str):
+    """UI 左ペインのコード表示用にファイル本文を返す。"""
+    if "/" not in repo:
+        raise HTTPException(400, "repo は owner/name 形式で指定してください")
+    owner, name = repo.split("/", 1)
+    toolbox = GitHubToolbox(token=os.environ["GITHUB_TOKEN"])
+    try:
+        return {"content": toolbox.get_file(owner, name, path)}
+    except Exception as exc:
+        raise HTTPException(404, f"ファイルを取得できません: {exc}") from exc
+
+
 @app.get("/api/dig")
 def dig(repo: str, path: str, line: int, q: str):
     if "/" not in repo:

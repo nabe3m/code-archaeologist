@@ -5,6 +5,7 @@
 - 各ツールは Evidence と「次の掘り先の手がかり」（PR番号・参照Issue番号）を返す
 """
 
+import base64
 import re
 from pathlib import Path
 
@@ -176,6 +177,11 @@ class GitHubToolbox:
             comments=comments,
             referenced_issues=sorted(referenced),
         )
+
+    def get_file(self, owner: str, repo: str, path: str, ref: str = "HEAD") -> str:
+        """ファイル本文を取得する（UI のコード表示用）。"""
+        data = self._get(f"/repos/{owner}/{repo}/contents/{path}?ref={ref}")
+        return base64.b64decode(data["content"]).decode()
 
     def get_issue(self, owner: str, repo: str, number: int) -> IssueResult:
         """Issue 本文とコメントを取得する。"""
