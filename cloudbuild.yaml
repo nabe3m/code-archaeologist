@@ -4,20 +4,25 @@
 substitutions:
   _REGION: asia-northeast1
   _SERVICE: code-archaeologist
-  _IMAGE: asia-northeast1-docker.pkg.dev/${PROJECT_ID}/app/code-archaeologist
 
 steps:
   - name: gcr.io/cloud-builders/docker
-    args: ["build", "-t", "${_IMAGE}:${SHORT_SHA}", "-t", "${_IMAGE}:latest", "."]
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/app/${_SERVICE}:$SHORT_SHA
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/app/${_SERVICE}:latest
+      - .
   - name: gcr.io/cloud-builders/docker
-    args: ["push", "--all-tags", "${_IMAGE}"]
+    args: ["push", "--all-tags", "${_REGION}-docker.pkg.dev/$PROJECT_ID/app/${_SERVICE}"]
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: gcloud
     args:
       - run
       - deploy
       - ${_SERVICE}
-      - --image=${_IMAGE}:${SHORT_SHA}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/app/${_SERVICE}:$SHORT_SHA
       - --region=${_REGION}
       - --allow-unauthenticated
       - --set-secrets=GEMINI_API_KEY=gemini-api-key:latest,GITHUB_TOKEN=github-token:latest
@@ -25,5 +30,5 @@ steps:
       - --timeout=300
 
 images:
-  - ${_IMAGE}:${SHORT_SHA}
-  - ${_IMAGE}:latest
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/app/${_SERVICE}:$SHORT_SHA
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/app/${_SERVICE}:latest
