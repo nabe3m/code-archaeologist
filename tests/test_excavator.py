@@ -55,8 +55,10 @@ def scripted_decider(decisions):
     seen_contexts = []
     iterator = iter(decisions)
 
-    def decide(question, chain, leads, target):
-        seen_contexts.append((chain.model_copy(deep=True), list(leads), dict(target)))
+    def decide(question, chain, leads, target, executed):
+        seen_contexts.append(
+            (chain.model_copy(deep=True), list(leads), dict(target), list(executed))
+        )
         return next(iterator)
 
     decide.seen = seen_contexts
@@ -113,7 +115,8 @@ def test_stops_at_max_steps():
     assert sum(1 for e in events if e.type == "dig_decision") == 3
 
 
-def test_duplicate_evidence_not_reemitted():
+def test_repeated_identical_call_is_not_reexecuted():
+    toolbox = StubToolbox()
     decide = scripted_decider(
         [
             Decision(tool="get_commit", args={"sha": "bbb222"}, reason="1回目"),
@@ -121,8 +124,44 @@ def test_duplicate_evidence_not_reemitted():
             Decision(tool="finish", args={}, reason="ok"),
         ]
     )
-    events = run_dig(StubToolbox(), decide)
+    events = run_dig(toolbox, decide)
+    assert toolbox.calls.count("get_commit") == 1  # 2回目はツールを実行しない
+    assert any(
+        e.type == "error" and "実行済み" in e.payload["message"] for e in events
+    )
     assert sum(1 for e in events if e.type == "evidence_found") == 1
+
+
+def test_failed_call_is_not_retried_with_same_args():
+    class FailingToolbox(StubToolbox):
+        def blame_line(self, owner, repo, path, line, ref="HEAD"):
+            self.calls.append("blame_line")
+            raise ValueError(f"line {line} not found in blame ranges for {path}")
+
+    toolbox = FailingToolbox()
+    decide = scripted_decider(
+        [
+            Decision(tool="blame_line", args={"path": "wrong.py", "line": 5}, reason="1回目"),
+            Decision(tool="blame_line", args={"path": "wrong.py", "line": 5}, reason="同じ手を再試行"),
+            Decision(tool="finish", args={}, reason="ok"),
+        ]
+    )
+    run_dig(toolbox, decide)
+    assert toolbox.calls.count("blame_line") == 1  # 失敗した呼び出しも記録され再実行しない
+
+
+def test_decider_receives_executed_history():
+    decide = scripted_decider(
+        [
+            Decision(tool="get_pr", args={"number": 42}, reason="PRを読む"),
+            Decision(tool="finish", args={}, reason="ok"),
+        ]
+    )
+    run_dig(StubToolbox(), decide)
+    _, _, _, first_executed = decide.seen[0]
+    _, _, _, second_executed = decide.seen[1]
+    assert first_executed == []
+    assert second_executed == [{"tool": "get_pr", "args": {"number": 42}}]
 
 
 def test_unknown_tool_emits_error_and_continues():

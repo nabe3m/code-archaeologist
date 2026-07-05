@@ -19,9 +19,10 @@ class Decision(BaseModel):
     reason: str
 
 
-# decide(question, chain, leads, target) — target は owner/repo/path/line。
-# LLM がファイルパス等を幻覚しないよう、正確な調査対象を毎回渡す。
-DecideFn = Callable[[str, EvidenceChain, list[dict], dict], Decision]
+# decide(question, chain, leads, target, executed) — target は owner/repo/path/line、
+# executed は実行済み呼び出しのリスト。LLM がパスを幻覚したり同じ手を
+# 繰り返したりしないよう、正確な文脈を毎回渡す。
+DecideFn = Callable[[str, EvidenceChain, list[dict], dict, list[dict]], Decision]
 
 
 class Excavator:
@@ -36,6 +37,7 @@ class Excavator:
         chain = EvidenceChain()
         leads: list[dict] = [{"tool": "blame_line", "args": {"path": path, "line": line}}]
         target = {"owner": owner, "repo": repo, "path": path, "line": line}
+        executed: list[dict] = []
         stopped_by = "finish"
 
         yield DigEvent(
@@ -48,7 +50,7 @@ class Excavator:
             if steps >= self._max_steps:
                 stopped_by = "max_steps"
                 break
-            decision = self._decide(question, chain, leads, target)
+            decision = self._decide(question, chain, leads, target, executed)
             steps += 1
             yield DigEvent(
                 type="dig_decision",
@@ -57,17 +59,26 @@ class Excavator:
             if decision.tool == "finish":
                 break
 
+            call = {"tool": decision.tool, "args": decision.args}
+            if call in executed:
+                yield DigEvent(
+                    type="error",
+                    payload={"tool": decision.tool, "message": "実行済みの呼び出しです（スキップ）"},
+                )
+                continue
+
             try:
                 found, new_leads = self._execute(owner, repo, decision)
             except Exception as exc:  # 幻覚ツール名や API エラーでもループは止めない
+                executed.append(call)  # 同じ引数での再試行を防ぐ
                 yield DigEvent(
                     type="error",
                     payload={"tool": decision.tool, "message": str(exc)},
                 )
                 continue
 
-            executed = {"tool": decision.tool, "args": decision.args}
-            leads = [lead for lead in leads if lead != executed]
+            executed.append(call)
+            leads = [lead for lead in leads if lead != call]
             leads.extend(lead for lead in new_leads if lead not in leads)
             for evidence in found:
                 if chain.add(evidence):

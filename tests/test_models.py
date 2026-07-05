@@ -16,11 +16,20 @@ def make_evidence(**overrides):
     return Evidence(**{**defaults, **overrides})
 
 
-def test_chain_deduplicates_by_url():
+def test_chain_deduplicates_by_kind_and_url():
     chain = EvidenceChain()
     chain.add(make_evidence())
     chain.add(make_evidence(title="duplicate with different title"))
     assert len(chain) == 1
+
+
+def test_blame_and_commit_for_same_sha_both_kept():
+    # blame とコミットは同じ URL を指すが、コミット側はフルメッセージを持つ別証拠
+    chain = EvidenceChain()
+    chain.add(make_evidence(kind="blame"))
+    added = chain.add(make_evidence(kind="commit", detail="full commit message body"))
+    assert added is True
+    assert len(chain) == 2
 
 
 def test_chain_renders_numbered_context():

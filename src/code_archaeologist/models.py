@@ -35,8 +35,12 @@ class EvidenceChain(BaseModel):
     items: list[Evidence] = Field(default_factory=list)
 
     def add(self, evidence: Evidence) -> bool:
-        """URL で重複排除して追加。新規なら True。"""
-        if any(e.url == evidence.url for e in self.items):
+        """(kind, URL) で重複排除して追加。新規なら True。
+
+        blame とコミットは同じ URL を指すが、コミット側はフルメッセージを
+        持つ別証拠なので kind も鍵に含める。
+        """
+        if any(e.kind == evidence.kind and e.url == evidence.url for e in self.items):
             return False
         self.items.append(evidence)
         return True

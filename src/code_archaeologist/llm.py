@@ -34,6 +34,9 @@ _DECIDE_PROMPT = """あなたはコードの歴史を発掘する「調査官」
 ## これまでに発掘した証拠
 {context}
 
+## 実行済みの呼び出し（結果は証拠に反映済み。同じ呼び出しを繰り返さない）
+{executed}
+
 ## 次の掘り先候補（機械的に抽出したもの。従う義務はない）
 {leads}
 
@@ -91,12 +94,18 @@ class GeminiAgents:
         self._client = genai.Client(api_key=api_key or os.environ["GEMINI_API_KEY"])
 
     def decide(
-        self, question: str, chain: EvidenceChain, leads: list[dict], target: dict
+        self,
+        question: str,
+        chain: EvidenceChain,
+        leads: list[dict],
+        target: dict,
+        executed: list[dict],
     ) -> Decision:
         prompt = _DECIDE_PROMPT.format(
             question=question,
             context=chain.as_context() or "（まだ何もない）",
             leads=leads or "（なし）",
+            executed=executed or "（なし）",
             **target,
         )
         response = _with_quota_backoff(
