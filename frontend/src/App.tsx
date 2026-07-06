@@ -1,10 +1,11 @@
 import { useCallback, useRef, useState } from "react";
-import type { Answer, DigEvent, DigRequest } from "./types";
+import type { Answer, DigEvent, DigRequest, Verdict } from "./types";
 import { CodePane } from "./components/CodePane";
 import { Timeline } from "./components/Timeline";
 import { AnswerPane } from "./components/AnswerPane";
 
 type Phase = "idle" | "digging" | "done" | "failed";
+type Mode = "dig" | "audit";
 
 const DEMO: DigRequest = {
   repo: "nabe3m/demo-repo",
@@ -16,49 +17,81 @@ const DEMO: DigRequest = {
 export default function App() {
   const [form, setForm] = useState<DigRequest>(DEMO);
   const [phase, setPhase] = useState<Phase>("idle");
+  const [mode, setMode] = useState<Mode>("dig");
   const [events, setEvents] = useState<DigEvent[]>([]);
   const [answer, setAnswer] = useState<Answer | null>(null);
+  const [verdict, setVerdict] = useState<Verdict | null>(null);
+  const [prUrl, setPrUrl] = useState<string | null>(null);
   const [code, setCode] = useState<string | null>(null);
   const [target, setTarget] = useState<DigRequest>(DEMO);
   const sourceRef = useRef<EventSource | null>(null);
+  const gotResultRef = useRef(false);
 
-  const dig = useCallback(() => {
-    sourceRef.current?.close();
-    setPhase("digging");
-    setEvents([]);
-    setAnswer(null);
-    setCode(null);
-    setTarget(form);
+  const start = useCallback(
+    (nextMode: Mode) => {
+      sourceRef.current?.close();
+      gotResultRef.current = false;
+      setMode(nextMode);
+      setPhase("digging");
+      setEvents([]);
+      setAnswer(null);
+      setVerdict(null);
+      setPrUrl(null);
+      setCode(null);
+      setTarget(form);
 
-    // コード取得と調査開始を並行に（ウォーターフォール回避）
-    fetch(`/api/file?repo=${encodeURIComponent(form.repo)}&path=${encodeURIComponent(form.path)}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status}`))))
-      .then((d: { content: string }) => setCode(d.content))
-      .catch(() => setCode(""));
+      // コード取得と調査開始を並行に（ウォーターフォール回避）
+      fetch(`/api/file?repo=${encodeURIComponent(form.repo)}&path=${encodeURIComponent(form.path)}`)
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status}`))))
+        .then((d: { content: string }) => setCode(d.content))
+        .catch(() => setCode(""));
 
-    const params = new URLSearchParams({
-      repo: form.repo,
-      path: form.path,
-      line: String(form.line),
-      q: form.question,
-    });
-    const source = new EventSource(`/api/dig?${params}`);
-    sourceRef.current = source;
-    source.onmessage = (message) => {
-      const event: DigEvent = JSON.parse(message.data);
-      if (event.type === "answer") {
-        setAnswer(event.payload);
-        setPhase("done");
-        source.close();
-      } else {
+      const url =
+        nextMode === "dig"
+          ? `/api/dig?${new URLSearchParams({
+              repo: form.repo,
+              path: form.path,
+              line: String(form.line),
+              q: form.question,
+            })}`
+          : `/api/audit?${new URLSearchParams({ repo: form.repo, path: form.path })}`;
+      const source = new EventSource(url);
+      sourceRef.current = source;
+      source.onmessage = (message) => {
+        const event: DigEvent = JSON.parse(message.data);
+        switch (event.type) {
+          case "answer":
+            setAnswer(event.payload);
+            gotResultRef.current = true;
+            setPhase("done");
+            source.close();
+            return;
+          case "audit_candidate":
+            // 監査候補の行をコードペインでハイライト
+            setTarget((t) => ({ ...t, line: event.payload.line }));
+            break;
+          case "verdict":
+            setVerdict(event.payload);
+            gotResultRef.current = true;
+            if (!event.payload.expired) {
+              setPhase("done");
+            }
+            break;
+          case "pr_created":
+            setPrUrl(event.payload.url);
+            setPhase("done");
+            break;
+        }
         setEvents((prev) => [...prev, event]);
-      }
-    };
-    source.onerror = () => {
-      setPhase((p) => (p === "digging" ? "failed" : p));
-      source.close();
-    };
-  }, [form]);
+      };
+      source.onerror = () => {
+        // ストリームが閉じた時点で結果（回答 or 判決）まで出ていれば正常終了
+        setPhase((p) => (p === "digging" ? (gotResultRef.current ? "done" : "failed") : p));
+        source.close();
+      };
+    },
+    [form],
+  );
 
   const digging = phase === "digging";
 
@@ -73,7 +106,7 @@ export default function App() {
           className="dig-form"
           onSubmit={(e) => {
             e.preventDefault();
-            dig();
+            start("dig");
           }}
         >
           <input
@@ -110,7 +143,16 @@ export default function App() {
             required
           />
           <button className="dig-button" type="submit" disabled={digging}>
-            {digging ? "発掘中…" : "⛏️ 発掘する"}
+            {digging && mode === "dig" ? "発掘中…" : "⛏️ 発掘する"}
+          </button>
+          <button
+            className="audit-button"
+            type="button"
+            disabled={digging}
+            title="ファイル全体から理由が失効した防御的コードを検出し、証拠付き削除 PR を作成します"
+            onClick={() => start("audit")}
+          >
+            {digging && mode === "audit" ? "監査中…" : "⚖️ 監査する"}
           </button>
         </form>
       </header>
@@ -120,7 +162,7 @@ export default function App() {
         <Timeline events={events} phase={phase} />
       </main>
 
-      <AnswerPane answer={answer} phase={phase} />
+      <AnswerPane answer={answer} verdict={verdict} prUrl={prUrl} mode={mode} phase={phase} />
     </div>
   );
 }

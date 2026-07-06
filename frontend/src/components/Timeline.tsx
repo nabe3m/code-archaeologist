@@ -82,7 +82,45 @@ function Entry({ event }: { event: DigEvent }) {
         <li className="entry done">
           <span className="entry-icon">⛏️</span>
           <div className="entry-body">
-            調査完了 — {event.payload.steps} ステップで証拠 {event.payload.evidence_count} 件を発掘。史官が回答を執筆中…
+            調査完了 — {event.payload.steps} ステップで証拠 {event.payload.evidence_count} 件を発掘
+          </div>
+        </li>
+      );
+    case "audit_candidate":
+      return (
+        <li className="entry decision">
+          <span className="entry-icon">🔎</span>
+          <div>
+            <div className="entry-title">監査候補を検出</div>
+            <div className="entry-body">
+              <code>
+                L{event.payload.line}: {event.payload.snippet}
+              </code>
+              <div>{event.payload.reason}</div>
+            </div>
+          </div>
+        </li>
+      );
+    case "verdict":
+      return (
+        <li className="entry evidence">
+          <span className="entry-icon">⚖️</span>
+          <div>
+            <div className="entry-title">判決</div>
+            <div className="entry-body">
+              {event.payload.expired ? "理由が失効 — 削除可能" : "現在も有効"}
+            </div>
+          </div>
+        </li>
+      );
+    case "pr_created":
+      return (
+        <li className="entry evidence">
+          <span className="entry-icon">🎉</span>
+          <div className="entry-body">
+            <a href={event.payload.url} target="_blank" rel="noreferrer">
+              削除 PR #{event.payload.number} を作成しました
+            </a>
           </div>
         </li>
       );

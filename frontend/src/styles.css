@@ -59,7 +59,7 @@ body {
 
 .dig-form {
   display: grid;
-  grid-template-columns: 220px 280px 76px 1fr auto;
+  grid-template-columns: 220px 280px 76px 1fr auto auto;
   gap: 8px;
 }
 
@@ -96,6 +96,56 @@ body {
 .dig-button:disabled {
   opacity: 0.6;
   cursor: wait;
+}
+
+.audit-button {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.audit-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.verdict-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.verdict-badge {
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 99px;
+  font-size: 12px;
+}
+
+.verdict-badge.expired {
+  background: rgba(217, 108, 74, 0.15);
+  color: var(--error);
+}
+
+.verdict-badge.valid {
+  background: rgba(127, 176, 105, 0.15);
+  color: var(--evidence);
+}
+
+.pr-link {
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.pr-link:hover {
+  text-decoration: underline;
 }
 
 /* ---- panes ---- */

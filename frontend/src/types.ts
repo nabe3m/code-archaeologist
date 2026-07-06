@@ -6,7 +6,17 @@ export type DigEvent =
   | { type: "evidence_found"; payload: { evidence: Evidence } }
   | { type: "error"; payload: { tool?: string; message: string } }
   | { type: "done"; payload: { steps: number; evidence_count: number; stopped_by: string } }
-  | { type: "answer"; payload: Answer };
+  | { type: "answer"; payload: Answer }
+  | { type: "audit_candidate"; payload: { line: number; snippet: string; reason: string } }
+  | { type: "verdict"; payload: Verdict }
+  | { type: "pr_created"; payload: { number: number; url: string } };
+
+export interface Verdict {
+  expired: boolean;
+  justification: string;
+  lines_to_remove: number[];
+  candidate: { line: number; snippet: string; reason: string };
+}
 
 export interface Target {
   owner: string;
