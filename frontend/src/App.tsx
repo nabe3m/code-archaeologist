@@ -1,31 +1,87 @@
-import { useCallback, useRef, useState } from "react";
-import type { Answer, DigEvent, DigRequest, Verdict } from "./types";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { Answer, DigEvent, Verdict } from "./types";
 import { CodePane } from "./components/CodePane";
+import { FileTree } from "./components/FileTree";
 import { Timeline } from "./components/Timeline";
 import { AnswerPane } from "./components/AnswerPane";
 
 type Phase = "idle" | "digging" | "done" | "failed";
 type Mode = "dig" | "audit";
 
-const DEMO: DigRequest = {
+const DEMO = {
   repo: "nabe3m/demo-repo",
   path: "orders/api.py",
-  line: 14,
+  lineSpec: "14",
   question: "この sleep(3) はなぜあるの? 今も必要?",
 };
 
+/** "14" | "14-16" → [14, null] | [14, 16] */
+function parseLineSpec(spec: string): [number, number | null] {
+  const match = spec.trim().match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+  if (!match) return [1, null];
+  const start = Number(match[1]);
+  const end = match[2] ? Number(match[2]) : null;
+  return end && end > start ? [start, end] : [start, null];
+}
+
 export default function App() {
-  const [form, setForm] = useState<DigRequest>(DEMO);
+  const [repo, setRepo] = useState(DEMO.repo);
+  const [path, setPath] = useState(DEMO.path);
+  const [lineSpec, setLineSpec] = useState(DEMO.lineSpec);
+  const [question, setQuestion] = useState(DEMO.question);
+
+  const [treePaths, setTreePaths] = useState<string[] | null>(null);
+  const [code, setCode] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
   const [mode, setMode] = useState<Mode>("dig");
   const [events, setEvents] = useState<DigEvent[]>([]);
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [prUrl, setPrUrl] = useState<string | null>(null);
-  const [code, setCode] = useState<string | null>(null);
-  const [target, setTarget] = useState<DigRequest>(DEMO);
   const sourceRef = useRef<EventSource | null>(null);
   const gotResultRef = useRef(false);
+
+  const [selStart, selEnd] = parseLineSpec(lineSpec);
+
+  const openFile = useCallback((targetRepo: string, targetPath: string) => {
+    setPath(targetPath);
+    setCode(null);
+    fetch(
+      `/api/file?repo=${encodeURIComponent(targetRepo)}&path=${encodeURIComponent(targetPath)}`,
+    )
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status}`))))
+      .then((d: { content: string }) => setCode(d.content))
+      .catch(() => setCode(""));
+  }, []);
+
+  const loadRepo = useCallback(
+    (targetRepo: string, targetPath?: string) => {
+      setTreePaths(null);
+      fetch(`/api/tree?repo=${encodeURIComponent(targetRepo)}`)
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status}`))))
+        .then((d: { paths: string[] }) => {
+          setTreePaths(d.paths);
+          const initial = targetPath && d.paths.includes(targetPath) ? targetPath : d.paths[0];
+          if (initial) openFile(targetRepo, initial);
+        })
+        .catch(() => setTreePaths([]));
+    },
+    [openFile],
+  );
+
+  // 初回はデモ用リポジトリをエディタとして開いておく
+  useEffect(() => {
+    loadRepo(DEMO.repo, DEMO.path);
+  }, [loadRepo]);
+
+  const selectLine = useCallback((line: number, extend: boolean) => {
+    setLineSpec((prev) => {
+      if (!extend) return String(line);
+      const [start] = parseLineSpec(prev);
+      const [a, b] = line < start ? [line, start] : [start, line];
+      return a === b ? String(a) : `${a}-${b}`;
+    });
+  }, []);
 
   const start = useCallback(
     (nextMode: Mode) => {
@@ -37,25 +93,17 @@ export default function App() {
       setAnswer(null);
       setVerdict(null);
       setPrUrl(null);
-      setCode(null);
-      setTarget(form);
+      if (code === null) openFile(repo, path);
 
-      // コード取得と調査開始を並行に（ウォーターフォール回避）
-      fetch(`/api/file?repo=${encodeURIComponent(form.repo)}&path=${encodeURIComponent(form.path)}`)
-        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status}`))))
-        .then((d: { content: string }) => setCode(d.content))
-        .catch(() => setCode(""));
-
-      const url =
-        nextMode === "dig"
-          ? `/api/dig?${new URLSearchParams({
-              repo: form.repo,
-              path: form.path,
-              line: String(form.line),
-              q: form.question,
-            })}`
-          : `/api/audit?${new URLSearchParams({ repo: form.repo, path: form.path })}`;
-      const source = new EventSource(url);
+      const params = new URLSearchParams({ repo, path });
+      if (nextMode === "dig") {
+        params.set("line", String(selStart));
+        if (selEnd) params.set("line_end", String(selEnd));
+        params.set("q", question);
+      }
+      const source = new EventSource(
+        nextMode === "dig" ? `/api/dig?${params}` : `/api/audit?${params}`,
+      );
       sourceRef.current = source;
       source.onmessage = (message) => {
         const event: DigEvent = JSON.parse(message.data);
@@ -67,8 +115,8 @@ export default function App() {
             source.close();
             return;
           case "audit_candidate":
-            // 監査候補の行をコードペインでハイライト
-            setTarget((t) => ({ ...t, line: event.payload.line }));
+            // 監査候補の行をエディタでハイライト
+            setLineSpec(String(event.payload.line));
             break;
           case "verdict":
             setVerdict(event.payload);
@@ -90,7 +138,7 @@ export default function App() {
         source.close();
       };
     },
-    [form],
+    [repo, path, code, question, selStart, selEnd, openFile],
   );
 
   const digging = phase === "digging";
@@ -109,35 +157,38 @@ export default function App() {
             start("dig");
           }}
         >
-          <input
-            className="input repo"
-            value={form.repo}
-            onChange={(e) => setForm({ ...form, repo: e.target.value })}
-            placeholder="owner/repo"
-            aria-label="リポジトリ"
-            required
-          />
-          <input
-            className="input path"
-            value={form.path}
-            onChange={(e) => setForm({ ...form, path: e.target.value })}
-            placeholder="path/to/file.py"
-            aria-label="ファイルパス"
-            required
-          />
+          <div className="repo-group">
+            <input
+              className="input repo"
+              value={repo}
+              onChange={(e) => setRepo(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  loadRepo(repo);
+                }
+              }}
+              placeholder="owner/repo"
+              aria-label="リポジトリ"
+              required
+            />
+            <button type="button" className="open-button" onClick={() => loadRepo(repo)}>
+              開く
+            </button>
+          </div>
           <input
             className="input line"
-            type="number"
-            min={1}
-            value={form.line}
-            onChange={(e) => setForm({ ...form, line: Number(e.target.value) })}
-            aria-label="行番号"
+            value={lineSpec}
+            onChange={(e) => setLineSpec(e.target.value)}
+            placeholder="14 or 14-16"
+            aria-label="行または行範囲"
+            title="行番号クリックで選択、Shift+クリックで範囲選択"
             required
           />
           <input
             className="input question"
-            value={form.question}
-            onChange={(e) => setForm({ ...form, question: e.target.value })}
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
             placeholder="このコードへの質問（例: なぜ sleep(3) があるの?）"
             aria-label="質問"
             required
@@ -158,7 +209,14 @@ export default function App() {
       </header>
 
       <main className="panes">
-        <CodePane code={code} path={target.path} highlightLine={target.line} started={phase !== "idle"} />
+        <FileTree paths={treePaths} selected={path} onSelect={(p) => openFile(repo, p)} />
+        <CodePane
+          code={code}
+          path={path}
+          highlightStart={selStart}
+          highlightEnd={selEnd ?? selStart}
+          onLineClick={selectLine}
+        />
         <Timeline events={events} phase={phase} />
       </main>
 

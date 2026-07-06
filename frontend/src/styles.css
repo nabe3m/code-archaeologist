@@ -59,8 +59,39 @@ body {
 
 .dig-form {
   display: grid;
-  grid-template-columns: 220px 280px 76px 1fr auto auto;
+  grid-template-columns: 280px 110px 1fr auto auto;
   gap: 8px;
+}
+
+.repo-group {
+  display: flex;
+  gap: 4px;
+}
+
+.repo-group .repo {
+  flex: 1;
+  min-width: 0;
+}
+
+.open-button {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.open-button:hover {
+  border-color: var(--accent);
+}
+
+.hint {
+  margin-left: auto;
+  font-weight: normal;
+  font-size: 11px;
+  opacity: 0.7;
 }
 
 .input {
@@ -151,10 +182,47 @@ body {
 /* ---- panes ---- */
 .panes {
   display: grid;
-  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  grid-template-columns: 210px minmax(0, 6fr) minmax(0, 5fr);
   gap: 10px;
   flex: 1;
   min-height: 0;
+}
+
+/* ---- file tree ---- */
+.tree-scroll {
+  overflow: auto;
+  flex: 1;
+  padding: 6px 4px;
+}
+
+.tree-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 12.5px;
+  font-family: var(--mono);
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-row:hover {
+  background: var(--surface-2);
+}
+
+.tree-dir {
+  color: var(--text-dim);
+}
+
+.tree-file.active {
+  background: var(--accent-dim);
+  color: var(--accent);
 }
 
 .pane {
@@ -241,6 +309,15 @@ body {
   color: var(--text-dim);
   user-select: none;
   opacity: 0.6;
+  background: none;
+  border: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.line-number:hover {
+  color: var(--accent);
+  opacity: 1;
 }
 
 .code-line.highlight {

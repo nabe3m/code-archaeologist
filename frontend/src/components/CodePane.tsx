@@ -3,28 +3,32 @@ import { useEffect, useRef } from "react";
 interface Props {
   code: string | null;
   path: string;
-  highlightLine: number;
-  started: boolean;
+  highlightStart: number;
+  highlightEnd: number;
+  onLineClick: (line: number, extend: boolean) => void;
 }
 
-export function CodePane({ code, path, highlightLine, started }: Props) {
+export function CodePane({ code, path, highlightStart, highlightEnd, onLineClick }: Props) {
   const highlightRef = useRef<HTMLDivElement | null>(null);
 
+  // コードが読み込まれたときだけ選択行へスクロール（クリックのたびには動かさない）
   useEffect(() => {
     highlightRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [code, highlightLine]);
+  }, [code]);
+
+  const rangeLabel =
+    highlightEnd > highlightStart ? `L${highlightStart}-${highlightEnd}` : `L${highlightStart}`;
 
   return (
     <section className="pane code-pane" aria-label="対象コード">
       <div className="pane-title">
         <span className="pane-icon">📄</span>
         {path}
-        <span className="line-badge">L{highlightLine}</span>
+        <span className="line-badge">{rangeLabel}</span>
+        <span className="hint">行番号クリックで選択 / Shift+クリックで範囲</span>
       </div>
       <div className="code-scroll">
-        {!started ? (
-          <p className="placeholder">質問を入力して「発掘する」を押すと、対象コードがここに表示されます</p>
-        ) : code === null ? (
+        {code === null ? (
           <p className="placeholder">コードを取得中…</p>
         ) : code === "" ? (
           <p className="placeholder">コードを取得できませんでした（リポジトリ/パスを確認してください）</p>
@@ -32,15 +36,22 @@ export function CodePane({ code, path, highlightLine, started }: Props) {
           <pre className="code">
             {code.split("\n").map((text, i) => {
               const line = i + 1;
-              const highlighted = line === highlightLine;
+              const highlighted = line >= highlightStart && line <= highlightEnd;
               return (
                 <div
                   key={line}
-                  ref={highlighted ? highlightRef : undefined}
+                  ref={line === highlightStart ? highlightRef : undefined}
                   className={highlighted ? "code-line highlight" : "code-line"}
                 >
-                  <span className="line-number">{line}</span>
-                  <span className="line-text">{text || " "}</span>
+                  <button
+                    type="button"
+                    className="line-number"
+                    onClick={(e) => onLineClick(line, e.shiftKey)}
+                    title="クリックで選択 / Shift+クリックで範囲選択"
+                  >
+                    {line}
+                  </button>
+                  <span className="line-text">{text || " "}</span>
                 </div>
               );
             })}
