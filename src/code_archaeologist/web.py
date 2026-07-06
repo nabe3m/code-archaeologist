@@ -87,6 +87,39 @@ def dig(repo: str, path: str, line: int, q: str):
     )
 
 
+@app.get("/api/audit")
+def audit(repo: str, path: str):
+    """監査官: 失効した防御的コードを検出し、削除 PR を作成する過程を SSE で流す。"""
+    if "/" not in repo:
+        raise HTTPException(400, "repo は owner/name 形式で指定してください")
+    from .auditor import Auditor
+
+    owner, name = repo.split("/", 1)
+    agents = GeminiAgents()
+    toolbox = GitHubToolbox(token=os.environ["GITHUB_TOKEN"])
+    excavator = Excavator(toolbox=toolbox, decide=agents.decide)
+    auditor = Auditor(
+        toolbox=toolbox,
+        dig=excavator.dig,
+        find_candidates=agents.find_candidates,
+        forward_query=agents.forward_query,
+        judge=agents.judge,
+    )
+
+    def stream():
+        try:
+            for event in auditor.audit(owner, name, path):
+                yield _sse(event.model_dump())
+        except Exception as exc:
+            yield _sse({"type": "error", "payload": {"message": str(exc)}})
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 if FRONTEND_DIST.exists():
     app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
 else:

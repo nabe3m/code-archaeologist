@@ -178,6 +178,64 @@ class GitHubToolbox:
             referenced_issues=sorted(referenced),
         )
 
+    def _get_fresh(self, path: str) -> dict | list:
+        """キャッシュを通さない GET（書き込みフロー用。古い sha を掴むと 409 になる）。"""
+        response = self._client.get(f"{API}{path}")
+        response.raise_for_status()
+        return response.json()
+
+    def _post(self, path: str, payload: dict) -> dict:
+        response = self._client.post(f"{API}{path}", json=payload)
+        response.raise_for_status()
+        return response.json()
+
+    def create_deletion_pr(
+        self,
+        owner: str,
+        repo: str,
+        path: str,
+        lines: list[int],
+        branch: str,
+        title: str,
+        body: str,
+        commit_message: str,
+    ) -> dict:
+        """指定行を削除するブランチ + コミット + PR を作成する（監査官の出口）。
+
+        lines は 1 始まりの行番号。デフォルトブランチを起点にする。
+        """
+        base = self._get_fresh(f"/repos/{owner}/{repo}")["default_branch"]
+        head_sha = self._get_fresh(f"/repos/{owner}/{repo}/git/ref/heads/{base}")["object"]["sha"]
+        self._post(
+            f"/repos/{owner}/{repo}/git/refs",
+            {"ref": f"refs/heads/{branch}", "sha": head_sha},
+        )
+
+        file_info = self._get_fresh(f"/repos/{owner}/{repo}/contents/{path}?ref={base}")
+        original = base64.b64decode(file_info["content"]).decode()
+        remove = set(lines)
+        kept = [
+            text
+            for i, text in enumerate(original.splitlines(keepends=True), start=1)
+            if i not in remove
+        ]
+        response = self._client.put(
+            f"{API}/repos/{owner}/{repo}/contents/{path}",
+            json={
+                "message": commit_message,
+                "content": base64.b64encode("".join(kept).encode()).decode(),
+                "sha": file_info["sha"],
+                "branch": branch,
+            },
+        )
+        response.raise_for_status()
+
+        pr = self._post(
+            f"/repos/{owner}/{repo}/pulls",
+            {"title": title, "body": body, "head": branch, "base": base},
+        )
+        return {"number": pr["number"], "url": pr["html_url"]}
+
     def search_issues(self, owner: str, repo: str, query: str) -> list[dict]:
         """リポジトリ内の Issue/PR をキーワード検索する。
 

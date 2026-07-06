@@ -13,6 +13,7 @@ from google import genai
 from google.genai import errors
 from pydantic import BaseModel
 
+from .auditor import Candidate, Verdict
 from .excavator import Decision
 from .models import EvidenceChain
 
@@ -149,3 +150,67 @@ class GeminiAgents:
             )
         )
         return response.text or ""
+
+    # ---- 監査官用 ----
+
+    def _structured(self, prompt: str, schema: type[BaseModel]) -> BaseModel:
+        response = _with_quota_backoff(
+            lambda: self._client.models.generate_content(
+                model=EXCAVATOR_MODEL,
+                contents=prompt,
+                config={
+                    "response_mime_type": "application/json",
+                    "response_schema": schema,
+                },
+            )
+        )
+        return response.parsed
+
+    def find_candidates(self, path: str, code: str) -> list[Candidate]:
+        numbered = "\n".join(f"{i:4d} | {t}" for i, t in enumerate(code.splitlines(), 1))
+        result = self._structured(
+            "あなたはコード監査官です。以下のコードから「歴史的事情がありそうな防御的コード」"
+            "（例: sleep による待機、不可解なリトライ、目的の分からない条件分岐や余分な処理）を"
+            "最大2件見つけてください。無ければ空リスト。\n"
+            "- line は左端に表示された行番号を正確に使うこと\n"
+            "- snippet はその行のコードをそのまま\n"
+            "- reason は「なぜ歴史的事情がありそうか」を1文で\n\n"
+            f"## ファイル: {path}\n```\n{numbered}\n```",
+            _CandidateList,
+        )
+        return result.candidates
+
+    def forward_query(self, chain: EvidenceChain) -> str:
+        result = self._structured(
+            "以下の証拠チェーンが示す「当時の制約」が、その後解消されていないかを"
+            "リポジトリ内の Issue/PR から探します。検索に最も有効なキーワード（2〜4語、"
+            "固有名詞優先。例: 'inventory v2'）を返してください。\n\n"
+            f"## 証拠チェーン\n{chain.as_context()}",
+            _ForwardQuery,
+        ).query
+        return result
+
+    def judge(self, candidate: Candidate, chain: EvidenceChain, code: str) -> Verdict:
+        numbered = "\n".join(f"{i:4d} | {t}" for i, t in enumerate(code.splitlines(), 1))
+        return self._structured(
+            "あなたはコード監査官です。以下の防御的コードについて、証拠チェーンだけを根拠に"
+            "「導入理由となった制約が現在は失効しているか」を判定してください。\n"
+            "- expired: 制約の解消（仕様変更・バージョン移行・EOL 等）が証拠で確認できる場合のみ true\n"
+            "- justification: 判定理由。主張には必ず証拠番号 [n] を付ける\n"
+            "- lines_to_remove: expired の場合、削除すべき行番号（左端の行番号を正確に。"
+            "対象コード行と、それを説明する直前のコメント行を含める。空行の削除は不要）。"
+            "expired でなければ空リスト\n\n"
+            f"## 対象: {candidate.line} 行目の `{candidate.snippet}`\n"
+            f"（候補理由: {candidate.reason}）\n\n"
+            f"## ファイル全体\n```\n{numbered}\n```\n\n"
+            f"## 証拠チェーン（番号は引用用）\n{chain.as_context()}",
+            Verdict,
+        )
+
+
+class _CandidateList(BaseModel):
+    candidates: list[Candidate]
+
+
+class _ForwardQuery(BaseModel):
+    query: str

@@ -15,6 +15,7 @@ dependencies = [
 
 [project.scripts]
 archaeologist = "code_archaeologist.cli:main"
+archaeologist-audit = "code_archaeologist.cli:main_audit"
 
 [build-system]
 requires = ["hatchling"]

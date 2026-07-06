@@ -12,7 +12,16 @@ EvidenceKind = Literal[
 ]
 
 EventType = Literal[
-    "dig_started", "dig_decision", "evidence_found", "answer", "done", "error"
+    "dig_started",
+    "dig_decision",
+    "evidence_found",
+    "answer",
+    "done",
+    "error",
+    # 監査官
+    "audit_candidate",
+    "verdict",
+    "pr_created",
 ]
 
 
