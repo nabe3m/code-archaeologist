@@ -132,6 +132,19 @@ def toolbox(tmp_path, requests_seen):
                     ]
                 },
             )
+        if path == "/repos/o/r":
+            return httpx.Response(200, json={"default_branch": "main"})
+        if path == "/repos/o/r/git/trees/main":
+            return httpx.Response(
+                200,
+                json={
+                    "tree": [
+                        {"path": "README.md", "type": "blob"},
+                        {"path": "src", "type": "tree"},
+                        {"path": "src/api.py", "type": "blob"},
+                    ]
+                },
+            )
         if path == "/repos/o/r/contents/src/api.py":
             import base64
 
@@ -146,6 +159,18 @@ def toolbox(tmp_path, requests_seen):
         cache=Cache(tmp_path),
         transport=httpx.MockTransport(handler),
     )
+
+
+def test_blame_range_returns_distinct_commits_covering_span(toolbox):
+    # 範囲 2..5 は aaa111(1-3) と bbb222(4-6) の2つの歴史にまたがる
+    evidences = toolbox.blame_range("o", "r", "src/api.py", start=2, end=5)
+    assert [e.ref for e in evidences] == ["aaa111", "bbb222"]
+    assert all(e.kind == "blame" for e in evidences)
+
+
+def test_blame_range_dedupes_single_commit(toolbox):
+    evidences = toolbox.blame_range("o", "r", "src/api.py", start=4, end=6)
+    assert [e.ref for e in evidences] == ["bbb222"]
 
 
 def test_blame_line_returns_commit_covering_line(toolbox):
@@ -205,6 +230,10 @@ def test_search_issues_returns_hits_with_pr_flag(toolbox):
             "url": "https://github.com/o/r/pull/4",
         },
     ]
+
+
+def test_list_files_returns_blob_paths_only(toolbox):
+    assert toolbox.list_files("o", "r") == ["README.md", "src/api.py"]
 
 
 def test_get_file_returns_decoded_text(toolbox):

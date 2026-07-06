@@ -103,15 +103,17 @@ class GitHubToolbox:
         self._cache.set(key, data)
         return data
 
+    def _blame_ranges(self, owner: str, repo: str, path: str, ref: str) -> list[dict]:
+        data = self._graphql(
+            _BLAME_QUERY, {"owner": owner, "repo": repo, "ref": ref, "path": path}
+        )
+        return data["data"]["repository"]["object"]["blame"]["ranges"]
+
     def blame_line(
         self, owner: str, repo: str, path: str, line: int, ref: str = "HEAD"
     ) -> BlameResult:
         """指定行を最後に変更したコミットを特定する（遡行の起点）。"""
-        data = self._graphql(
-            _BLAME_QUERY, {"owner": owner, "repo": repo, "ref": ref, "path": path}
-        )
-        ranges = data["data"]["repository"]["object"]["blame"]["ranges"]
-        for r in ranges:
+        for r in self._blame_ranges(owner, repo, path, ref):
             if r["startingLine"] <= line <= r["endingLine"]:
                 commit = r["commit"]
                 return BlameResult(
@@ -126,6 +128,36 @@ class GitHubToolbox:
                     )
                 )
         raise ValueError(f"line {line} not found in blame ranges for {path}")
+
+    def blame_range(
+        self, owner: str, repo: str, path: str, start: int, end: int, ref: str = "HEAD"
+    ) -> list[Evidence]:
+        """行範囲をカバーするコミット群を重複排除して返す（範囲遡行の起点）。"""
+        evidences: list[Evidence] = []
+        seen: set[str] = set()
+        for r in self._blame_ranges(owner, repo, path, ref):
+            if r["endingLine"] < start or r["startingLine"] > end:
+                continue
+            commit = r["commit"]
+            if commit["oid"] in seen:
+                continue
+            seen.add(commit["oid"])
+            span_start = max(r["startingLine"], start)
+            span_end = min(r["endingLine"], end)
+            evidences.append(
+                Evidence(
+                    kind="blame",
+                    ref=commit["oid"],
+                    url=commit["url"],
+                    title=commit["messageHeadline"],
+                    detail=f"{path}:{span_start}-{span_end} を最後に変更したコミット",
+                    author=commit["author"]["name"],
+                    date=commit["author"]["date"],
+                )
+            )
+        if not evidences:
+            raise ValueError(f"lines {start}-{end} not found in blame ranges for {path}")
+        return evidences
 
     def get_commit(self, owner: str, repo: str, sha: str) -> CommitResult:
         """コミット全文と、紐づく PR 番号を取得する。"""
@@ -254,6 +286,12 @@ class GitHubToolbox:
             }
             for item in data["items"]
         ]
+
+    def list_files(self, owner: str, repo: str) -> list[str]:
+        """リポジトリの全ファイルパス（UI のファイルツリー用）。"""
+        default_branch = self._get(f"/repos/{owner}/{repo}")["default_branch"]
+        data = self._get(f"/repos/{owner}/{repo}/git/trees/{default_branch}?recursive=1")
+        return [item["path"] for item in data["tree"] if item["type"] == "blob"]
 
     def get_file(self, owner: str, repo: str, path: str, ref: str = "HEAD") -> str:
         """ファイル本文を取得する（UI のコード表示用）。"""

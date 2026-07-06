@@ -57,8 +57,21 @@ def get_file(repo: str, path: str):
         raise HTTPException(404, f"ファイルを取得できません: {exc}") from exc
 
 
+@app.get("/api/tree")
+def tree(repo: str):
+    """リポジトリのファイル一覧（UI のファイルツリー用）。"""
+    if "/" not in repo:
+        raise HTTPException(400, "repo は owner/name 形式で指定してください")
+    owner, name = repo.split("/", 1)
+    toolbox = GitHubToolbox(token=os.environ["GITHUB_TOKEN"])
+    try:
+        return {"paths": toolbox.list_files(owner, name)}
+    except Exception as exc:
+        raise HTTPException(404, f"リポジトリを読み取れません: {exc}") from exc
+
+
 @app.get("/api/dig")
-def dig(repo: str, path: str, line: int, q: str):
+def dig(repo: str, path: str, line: int, q: str, line_end: int | None = None):
     if "/" not in repo:
         raise HTTPException(400, "repo は owner/name 形式で指定してください")
     owner, name = repo.split("/", 1)
@@ -71,7 +84,7 @@ def dig(repo: str, path: str, line: int, q: str):
     def stream():
         chain = EvidenceChain()
         try:
-            for event in excavator.dig(owner, name, path, line, q):
+            for event in excavator.dig(owner, name, path, line, q, line_end=line_end):
                 if event.type == "done":
                     chain = EvidenceChain.model_validate(event.payload["chain"])
                 yield _sse(event.model_dump())

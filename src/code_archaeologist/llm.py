@@ -30,7 +30,7 @@ _DECIDE_PROMPT = """あなたはコードの歴史を発掘する「調査官」
 ## 調査対象（この値を一字一句そのまま使うこと。パスや行番号を創作・変形しない）
 - リポジトリ: {owner}/{repo}
 - ファイル: {path}
-- 行番号: {line}
+- 行: {line_display}
 
 ## これまでに発掘した証拠
 {context}
@@ -43,6 +43,7 @@ _DECIDE_PROMPT = """あなたはコードの歴史を発掘する「調査官」
 
 ## 使える道具
 - blame_line(path: str, line: int): その行を最後に変更したコミットを特定（遡行の起点）
+- blame_range(path: str, start: int, end: int): 行範囲をカバーするコミット群を特定（範囲調査の起点）
 - get_commit(sha: str): コミット全文と紐づく PR 番号
 - get_pr(number: int): PR 本文・議論・参照 Issue 番号
 - get_issue(number: int): Issue 本文とコメント
@@ -71,12 +72,18 @@ class _DecisionArgs(BaseModel):
 
     path: str | None = None
     line: int | None = None
+    start: int | None = None
+    end: int | None = None
     sha: str | None = None
     number: int | None = None
+    query: str | None = None
 
 
 class _LlmDecision(BaseModel):
-    tool: Literal["blame_line", "get_commit", "get_pr", "get_issue", "finish"]
+    tool: Literal[
+        "blame_line", "blame_range", "get_commit", "get_pr", "get_issue",
+        "search_issues", "finish",
+    ]
     args: _DecisionArgs
     reason: str
 
@@ -119,12 +126,19 @@ class GeminiAgents:
             f"- {render_call(e['tool'], e['args'])} → {e.get('outcome', 'ok')}"
             for e in executed
         )
+        line_end = target.get("line_end")
+        line_display = (
+            f"{target['line']}-{line_end}（範囲）" if line_end else str(target["line"])
+        )
         prompt = _DECIDE_PROMPT.format(
             question=question,
             context=chain.as_context() or "（まだ何もない）",
             leads=leads_text or "（なし。search_issues で新しい手がかりを探すか finish）",
             executed=executed_text or "（なし）",
-            **target,
+            owner=target["owner"],
+            repo=target["repo"],
+            path=target["path"],
+            line_display=line_display,
         )
         response = _with_quota_backoff(
             lambda: self._client.models.generate_content(

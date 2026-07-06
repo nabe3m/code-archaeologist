@@ -32,11 +32,21 @@ class Excavator:
         self._max_steps = max_steps
 
     def dig(
-        self, owner: str, repo: str, path: str, line: int, question: str
+        self,
+        owner: str,
+        repo: str,
+        path: str,
+        line: int,
+        question: str,
+        line_end: int | None = None,
     ) -> Iterator[DigEvent]:
         chain = EvidenceChain()
-        leads: list[dict] = [{"tool": "blame_line", "args": {"path": path, "line": line}}]
-        target = {"owner": owner, "repo": repo, "path": path, "line": line}
+        if line_end and line_end > line:
+            first_lead = {"tool": "blame_range", "args": {"path": path, "start": line, "end": line_end}}
+        else:
+            first_lead = {"tool": "blame_line", "args": {"path": path, "line": line}}
+        leads: list[dict] = [first_lead]
+        target = {"owner": owner, "repo": repo, "path": path, "line": line, "line_end": line_end}
         executed: list[dict] = []
         finish_rejected = False
         stopped_by = "finish"
@@ -141,6 +151,11 @@ class Excavator:
                 result = self._toolbox.blame_line(owner, repo, **args)
                 return [result.evidence], [
                     {"tool": "get_commit", "args": {"sha": result.evidence.ref}}
+                ]
+            case "blame_range":
+                evidences = self._toolbox.blame_range(owner, repo, **args)
+                return list(evidences), [
+                    {"tool": "get_commit", "args": {"sha": e.ref}} for e in evidences
                 ]
             case "get_commit":
                 result = self._toolbox.get_commit(owner, repo, **args)

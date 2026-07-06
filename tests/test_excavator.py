@@ -49,6 +49,10 @@ class StubToolbox:
         self.calls.append("get_issue")
         return IssueResult(evidence=ev("issue", number), comments=[])
 
+    def blame_range(self, owner, repo, path, start, end, ref="HEAD"):
+        self.calls.append(f"blame_range({start},{end})")
+        return [ev("blame", "aaa111"), ev("blame", "bbb222")]
+
     def search_issues(self, owner, repo, query):
         self.calls.append(f"search_issues({query})")
         return [
@@ -195,6 +199,44 @@ def test_decider_receives_executed_history():
     ]
 
 
+def test_range_dig_seeds_blame_range_and_digs_every_commit():
+    decide = scripted_decider(
+        [
+            Decision(tool="blame_range", args={"path": "src/api.py", "start": 5, "end": 9},
+                     reason="範囲の歴史を特定"),
+            Decision(tool="finish", args={}, reason="ok"),
+            Decision(tool="finish", args={}, reason="再考後も ok"),
+        ]
+    )
+    excavator = Excavator(toolbox=StubToolbox(), decide=decide, max_steps=10)
+    events = list(excavator.dig("o", "r", "src/api.py", 5, "この範囲なぜ?", line_end=9))
+    # 範囲内の2コミットがそれぞれ証拠になる
+    assert sum(1 for e in events if e.type == "evidence_found") == 2
+    # 初期リードは blame_range、両コミットの get_commit がリードに載る
+    first_leads = decide.seen[0][1]
+    assert first_leads == [
+        {"tool": "blame_range", "args": {"path": "src/api.py", "start": 5, "end": 9}}
+    ]
+    second_leads = decide.seen[1][1]
+    assert {"tool": "get_commit", "args": {"sha": "aaa111"}} in second_leads
+    assert {"tool": "get_commit", "args": {"sha": "bbb222"}} in second_leads
+    # target に範囲が入る
+    assert decide.seen[0][2]["line_end"] == 9
+
+
+def test_single_line_dig_target_has_no_range():
+    decide = scripted_decider(
+        [
+            Decision(tool="blame_line", args={"path": "src/api.py", "line": 5}, reason="起点"),
+            Decision(tool="finish", args={}, reason="ok"),
+            Decision(tool="finish", args={}, reason="再考後も ok"),
+        ]
+    )
+    run_dig(StubToolbox(), decide)
+    target = decide.seen[0][2]
+    assert target["line_end"] is None
+
+
 def test_premature_finish_is_rejected_once():
     # 未消化のリードが残ったままの finish は一度だけ差し戻し、再考させる
     decide = scripted_decider(
@@ -280,4 +322,6 @@ def test_decider_sees_accumulated_evidence_and_leads():
     # PR が参照していた Issue #12 が「次の掘り先候補」として提示される
     assert {"tool": "get_issue", "args": {"number": 12}} in second_leads
     # LLM がパスを幻覚しないよう、正確な調査対象を毎回渡す
-    assert first_target == {"owner": "o", "repo": "r", "path": "src/api.py", "line": 5}
+    assert first_target == {
+        "owner": "o", "repo": "r", "path": "src/api.py", "line": 5, "line_end": None,
+    }
