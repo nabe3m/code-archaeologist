@@ -36,6 +36,8 @@ Code Archaeologist は、この「コードの考古学」を AI エージェン
 
 「このコード、消していい?」— 監査官はこの歴史を発掘し、証拠 10 件を引用した[削除 PR](https://github.com/nabe3m/demo-repo/pull/5) を自動作成します。
 
+一方、同じファイルの決済リトライ（[Issue #9](https://github.com/nabe3m/demo-repo/issues/9) / [PR #10](https://github.com/nabe3m/demo-repo/pull/10): プロバイダのレート制限は「増枠予定なし」）は、**制約がまだ生きていると判定して「維持すべき」と宣言し、削除 PR を作りません**。監査官は「防御的コードを消す機械」ではなく、歴史を読んで生死を見分けます。
+
 ## 使い方（デモ URL で試す）
 
 1. デモ URL を開く（demo-repo の対象行がプリセット済み）
