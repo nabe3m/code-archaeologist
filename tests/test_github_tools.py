@@ -111,6 +111,27 @@ def toolbox(tmp_path, requests_seen):
             )
         if path == "/repos/o/r/issues/12/comments":
             return httpx.Response(200, json=[])
+        if path == "/search/issues":
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "number": 3,
+                            "title": "inventory API v2 への移行",
+                            "state": "closed",
+                            "html_url": "https://github.com/o/r/issues/3",
+                        },
+                        {
+                            "number": 4,
+                            "title": "inventory API v2 へ移行",
+                            "state": "closed",
+                            "html_url": "https://github.com/o/r/pull/4",
+                            "pull_request": {"url": "https://api.github.com/repos/o/r/pulls/4"},
+                        },
+                    ]
+                },
+            )
         if path == "/repos/o/r/contents/src/api.py":
             import base64
 
@@ -164,6 +185,26 @@ def test_get_pr_returns_discussion_and_referenced_issues(toolbox):
     assert result.comments[0].kind == "pr_comment"
     # 本文の #12 とコメントの #7 を拾い、自分自身 (#42) は含めない
     assert sorted(result.referenced_issues) == [7, 12]
+
+
+def test_search_issues_returns_hits_with_pr_flag(toolbox):
+    hits = toolbox.search_issues("o", "r", "inventory v2")
+    assert hits == [
+        {
+            "number": 3,
+            "title": "inventory API v2 への移行",
+            "is_pr": False,
+            "state": "closed",
+            "url": "https://github.com/o/r/issues/3",
+        },
+        {
+            "number": 4,
+            "title": "inventory API v2 へ移行",
+            "is_pr": True,
+            "state": "closed",
+            "url": "https://github.com/o/r/pull/4",
+        },
+    ]
 
 
 def test_get_file_returns_decoded_text(toolbox):

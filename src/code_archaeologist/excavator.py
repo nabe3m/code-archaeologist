@@ -122,5 +122,14 @@ class Excavator:
             case "get_issue":
                 result = self._toolbox.get_issue(owner, repo, **args)
                 return [result.evidence, *result.comments], []
+            case "search_issues":
+                hits = self._toolbox.search_issues(owner, repo, **args)
+                return [], [
+                    {
+                        "tool": "get_pr" if hit["is_pr"] else "get_issue",
+                        "args": {"number": hit["number"]},
+                    }
+                    for hit in hits
+                ]
             case unknown:
                 raise ValueError(f"unknown tool: {unknown}")

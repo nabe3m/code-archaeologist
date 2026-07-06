@@ -49,6 +49,15 @@ class StubToolbox:
         self.calls.append("get_issue")
         return IssueResult(evidence=ev("issue", number), comments=[])
 
+    def search_issues(self, owner, repo, query):
+        self.calls.append(f"search_issues({query})")
+        return [
+            {"number": 3, "title": "v2 移行", "is_pr": False, "state": "closed",
+             "url": "https://github.com/o/r/issues/3"},
+            {"number": 4, "title": "v2 へ移行", "is_pr": True, "state": "closed",
+             "url": "https://github.com/o/r/pull/4"},
+        ]
+
 
 def scripted_decider(decisions):
     """事前に台本化した判断列を順に返す decide 関数。受け取った文脈も記録する。"""
@@ -150,7 +159,17 @@ def test_failed_call_is_not_retried_with_same_args():
     assert toolbox.calls.count("blame_line") == 1  # 失敗した呼び出しも記録され再実行しない
 
 
-def test_decider_receives_executed_history():
+def test_search_issues_yields_leads_for_each_hit():
+    decide = scripted_decider(
+        [
+            Decision(tool="search_issues", args={"query": "inventory v2"}, reason="失効確認"),
+            Decision(tool="finish", args={}, reason="ok"),
+        ]
+    )
+    run_dig(StubToolbox(), decide)
+    _, second_leads, _, _ = decide.seen[1]
+    assert {"tool": "get_issue", "args": {"number": 3}} in second_leads
+    assert {"tool": "get_pr", "args": {"number": 4}} in second_leads
     decide = scripted_decider(
         [
             Decision(tool="get_pr", args={"number": 42}, reason="PRを読む"),

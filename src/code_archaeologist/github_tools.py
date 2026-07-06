@@ -178,6 +178,25 @@ class GitHubToolbox:
             referenced_issues=sorted(referenced),
         )
 
+    def search_issues(self, owner: str, repo: str, query: str) -> list[dict]:
+        """リポジトリ内の Issue/PR をキーワード検索する。
+
+        「当時の制約はその後解消されたか?」を追跡するための前方調査ツール。
+        結果は掘り先候補（get_issue / get_pr）への入口になる。
+        """
+        q = f"repo:{owner}/{repo} {query}"
+        data = self._get(f"/search/issues?q={q}&per_page=10")
+        return [
+            {
+                "number": item["number"],
+                "title": item["title"],
+                "is_pr": "pull_request" in item,
+                "state": item["state"],
+                "url": item["html_url"],
+            }
+            for item in data["items"]
+        ]
+
     def get_file(self, owner: str, repo: str, path: str, ref: str = "HEAD") -> str:
         """ファイル本文を取得する（UI のコード表示用）。"""
         data = self._get(f"/repos/{owner}/{repo}/contents/{path}?ref={ref}")
