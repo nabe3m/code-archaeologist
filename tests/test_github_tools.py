@@ -51,10 +51,17 @@ def requests_seen():
 
 
 @pytest.fixture
-def toolbox(tmp_path, requests_seen):
+def head_state():
+    return {"sha": "headAAA"}
+
+
+@pytest.fixture
+def toolbox(tmp_path, requests_seen, head_state):
     def handler(request: httpx.Request) -> httpx.Response:
         requests_seen.append(request)
         path = request.url.path
+        if path == "/repos/o/r/commits/HEAD":
+            return httpx.Response(200, json={"sha": head_state["sha"]})
         if path == "/graphql":
             return httpx.Response(200, json=BLAME_GRAPHQL_RESPONSE)
         if path == "/repos/o/r/commits/bbb222":
@@ -134,7 +141,7 @@ def toolbox(tmp_path, requests_seen):
             )
         if path == "/repos/o/r":
             return httpx.Response(200, json={"default_branch": "main"})
-        if path == "/repos/o/r/git/trees/main":
+        if path == "/repos/o/r/git/trees/headAAA":
             return httpx.Response(
                 200,
                 json={
@@ -182,7 +189,7 @@ def test_blame_line_returns_commit_covering_line(toolbox):
 
 def test_blame_sends_auth_and_query(toolbox, requests_seen):
     toolbox.blame_line("o", "r", "src/api.py", line=5)
-    request = requests_seen[0]
+    request = next(r for r in requests_seen if r.url.path == "/graphql")
     assert request.headers["authorization"] == "Bearer dummy"
     body = json.loads(request.content)
     assert "blame" in body["query"]
@@ -240,6 +247,38 @@ def test_get_file_returns_decoded_text(toolbox):
     # UI の左ペイン（対象行ハイライト付きコード表示）用
     text = toolbox.get_file("o", "r", "src/api.py")
     assert text == "import time\n\ntime.sleep(3)\n"
+
+
+def test_head_reads_refresh_when_head_moves(tmp_path, head_state):
+    """ref=HEAD のキャッシュはコミット SHA 単位。HEAD が進んだら再取得する。"""
+    calls = {"graphql": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/repos/o/r/commits/HEAD":
+            return httpx.Response(200, json={"sha": head_state["sha"]})
+        if path == "/graphql":
+            calls["graphql"] += 1
+            return httpx.Response(200, json=BLAME_GRAPHQL_RESPONSE)
+        return httpx.Response(404, json={})
+
+    transport = httpx.MockTransport(handler)
+    cache_dir = tmp_path
+
+    tb1 = GitHubToolbox(token="t", cache=Cache(cache_dir), transport=transport)
+    tb1.blame_line("o", "r", "src/api.py", 5)
+    assert calls["graphql"] == 1
+
+    # HEAD が同じなら別インスタンスでもキャッシュが効く
+    tb2 = GitHubToolbox(token="t", cache=Cache(cache_dir), transport=transport)
+    tb2.blame_line("o", "r", "src/api.py", 5)
+    assert calls["graphql"] == 1
+
+    # HEAD が進んだら blame を取り直す
+    head_state["sha"] = "headBBB"
+    tb3 = GitHubToolbox(token="t", cache=Cache(cache_dir), transport=transport)
+    tb3.blame_line("o", "r", "src/api.py", 5)
+    assert calls["graphql"] == 2
 
 
 def test_get_issue_returns_evidence(toolbox):

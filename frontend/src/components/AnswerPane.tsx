@@ -1,9 +1,9 @@
 import type { Answer, Verdict } from "../types";
+import type { AuditResult } from "../App";
 
 interface Props {
   answer: Answer | null;
-  verdict: Verdict | null;
-  prUrl: string | null;
+  auditResults: AuditResult[];
   mode: "dig" | "audit";
   phase: "idle" | "digging" | "done" | "failed" | "stopped";
 }
@@ -63,12 +63,39 @@ function DigResult({ answer, phase }: { answer: Answer | null; phase: Props["pha
   );
 }
 
-function AuditResult({ verdict, prUrl, phase }: { verdict: Verdict | null; prUrl: string | null; phase: Props["phase"] }) {
-  if (verdict === null) {
+function VerdictCard({ verdict, prUrl }: { verdict: Verdict; prUrl: string | null }) {
+  return (
+    <div className="verdict-card">
+      <p className="verdict-badge-row">
+        <span className={verdict.expired ? "verdict-badge expired" : "verdict-badge valid"}>
+          {verdict.expired ? "⚖️ 理由が失効 — 削除可能" : "⚖️ 現在も有効 — 維持すべき"}
+        </span>
+        <code>
+          L{verdict.candidate.line}: {verdict.candidate.snippet}
+        </code>
+      </p>
+      <p>{verdict.justification}</p>
+      {verdict.expired ? (
+        prUrl ? (
+          <a className="pr-link" href={prUrl} target="_blank" rel="noreferrer">
+            🎉 削除 PR を自動作成しました → {prUrl.replace("https://github.com/", "")}
+          </a>
+        ) : (
+          <p className="placeholder">削除 PR を作成中…</p>
+        )
+      ) : (
+        <p className="keep-note">このコードの前提はまだ生きています。削除 PR は作成しません。</p>
+      )}
+    </div>
+  );
+}
+
+function AuditResults({ results, phase }: { results: AuditResult[]; phase: Props["phase"] }) {
+  if (results.length === 0) {
     return (
       <p className="placeholder">
         {phase === "digging"
-          ? "防御的コードを検出し、歴史を発掘して判決を下します"
+          ? "防御的コードを検出し、歴史を発掘して1件ずつ判決を下します"
           : phase === "stopped"
             ? "監査を停止しました"
             : "—"}
@@ -76,33 +103,16 @@ function AuditResult({ verdict, prUrl, phase }: { verdict: Verdict | null; prUrl
     );
   }
   return (
-    <div className="answer">
-      <div className="answer-text">
-        <p className="verdict-badge-row">
-          <span className={verdict.expired ? "verdict-badge expired" : "verdict-badge valid"}>
-            {verdict.expired ? "⚖️ 理由が失効 — 削除可能" : "⚖️ 現在も有効"}
-          </span>
-          <code>{verdict.candidate.snippet}</code>
-        </p>
-        <p>{verdict.justification}</p>
-      </div>
-      <div className="sources">
-        <div className="sources-title">アクション</div>
-        {prUrl ? (
-          <a className="pr-link" href={prUrl} target="_blank" rel="noreferrer">
-            🎉 削除 PR を自動作成しました → {prUrl.replace("https://github.com/", "")}
-          </a>
-        ) : verdict.expired ? (
-          <p className="placeholder">削除 PR を作成中…</p>
-        ) : (
-          <p>このコードは維持すべきです。削除 PR は作成しません。</p>
-        )}
-      </div>
+    <div className="verdict-list">
+      {results.map((r, i) => (
+        <VerdictCard key={i} verdict={r.verdict} prUrl={r.prUrl} />
+      ))}
+      {phase === "digging" ? <p className="placeholder">次の候補を監査中…</p> : null}
     </div>
   );
 }
 
-export function AnswerPane({ answer, verdict, prUrl, mode, phase }: Props) {
+export function AnswerPane({ answer, auditResults, mode, phase }: Props) {
   return (
     <section className="pane answer-pane" aria-label="結果">
       <div className="pane-title">
@@ -110,7 +120,7 @@ export function AnswerPane({ answer, verdict, prUrl, mode, phase }: Props) {
         {mode === "audit" ? "監査官の判決" : "史官の回答"}
       </div>
       {mode === "audit" ? (
-        <AuditResult verdict={verdict} prUrl={prUrl} phase={phase} />
+        <AuditResults results={auditResults} phase={phase} />
       ) : (
         <DigResult answer={answer} phase={phase} />
       )}

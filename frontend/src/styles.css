@@ -194,6 +194,32 @@ body {
   text-decoration: underline;
 }
 
+.verdict-list {
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.verdict-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.verdict-list .placeholder {
+  padding: 0;
+}
+
+.keep-note {
+  color: var(--evidence);
+  font-weight: 700;
+}
+
 /* ---- panes ---- */
 .panes {
   display: grid;
@@ -422,6 +448,15 @@ body {
 
 .entry.error .entry-body {
   color: var(--error);
+  font-size: 12px;
+}
+
+.entry.finish {
+  opacity: 0.75;
+}
+
+.entry-body.dim {
+  color: var(--text-dim);
   font-size: 12px;
 }
 

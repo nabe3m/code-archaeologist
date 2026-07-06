@@ -8,10 +8,15 @@ import { AnswerPane } from "./components/AnswerPane";
 type Phase = "idle" | "digging" | "done" | "failed" | "stopped";
 type Mode = "dig" | "audit";
 
+export interface AuditResult {
+  verdict: Verdict;
+  prUrl: string | null;
+}
+
 const DEMO = {
   repo: "nabe3m/demo-repo",
   path: "orders/api.py",
-  lineSpec: "14",
+  lineSpec: "15",
   question: "この sleep(3) はなぜあるの? 今も必要?",
 };
 
@@ -36,8 +41,7 @@ export default function App() {
   const [mode, setMode] = useState<Mode>("dig");
   const [events, setEvents] = useState<DigEvent[]>([]);
   const [answer, setAnswer] = useState<Answer | null>(null);
-  const [verdict, setVerdict] = useState<Verdict | null>(null);
-  const [prUrl, setPrUrl] = useState<string | null>(null);
+  const [auditResults, setAuditResults] = useState<AuditResult[]>([]);
   const sourceRef = useRef<EventSource | null>(null);
   const gotResultRef = useRef(false);
 
@@ -91,8 +95,7 @@ export default function App() {
       setPhase("digging");
       setEvents([]);
       setAnswer(null);
-      setVerdict(null);
-      setPrUrl(null);
+      setAuditResults([]);
       if (code === null) openFile(repo, path);
 
       const params = new URLSearchParams({ repo, path });
@@ -119,15 +122,16 @@ export default function App() {
             setLineSpec(String(event.payload.line));
             break;
           case "verdict":
-            setVerdict(event.payload);
+            // 監査は複数候補を順に処理するため、判決は一覧に積む
+            setAuditResults((prev) => [...prev, { verdict: event.payload, prUrl: null }]);
             gotResultRef.current = true;
-            if (!event.payload.expired) {
-              setPhase("done");
-            }
             break;
           case "pr_created":
-            setPrUrl(event.payload.url);
-            setPhase("done");
+            setAuditResults((prev) =>
+              prev.map((r, i) =>
+                i === prev.length - 1 ? { ...r, prUrl: event.payload.url } : r,
+              ),
+            );
             break;
         }
         setEvents((prev) => [...prev, event]);
@@ -235,7 +239,7 @@ export default function App() {
         <Timeline events={events} phase={phase} />
       </main>
 
-      <AnswerPane answer={answer} verdict={verdict} prUrl={prUrl} mode={mode} phase={phase} />
+      <AnswerPane answer={answer} auditResults={auditResults} mode={mode} phase={phase} />
     </div>
   );
 }

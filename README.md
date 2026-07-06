@@ -28,7 +28,7 @@ Code Archaeologist は、この「コードの考古学」を AI エージェン
 
 ### デモシナリオ: 消せない `sleep(3)` の考古学
 
-[demo-repo](https://github.com/nabe3m/demo-repo) の `orders/api.py:14` には `time.sleep(3)` があります。
+[demo-repo](https://github.com/nabe3m/demo-repo) の `orders/api.py:15` には `time.sleep(3)` があります。
 
 1. 2024-03: 在庫 API v1 が結果整合のため書き込み直後の読み取りが 404 に（[Issue #1](https://github.com/nabe3m/demo-repo/issues/1)）
 2. 対症療法として `sleep(3)` を追加。「**v2 が出たら真っ先に消す**」条件で承認（[PR #2](https://github.com/nabe3m/demo-repo/pull/2)）
@@ -82,7 +82,7 @@ cp .env.example .env  # GEMINI_API_KEY / GITHUB_TOKEN を設定
 uv run pytest
 
 # CLI で発掘
-uv run archaeologist nabe3m/demo-repo orders/api.py 14 "この sleep(3) はなぜあるの?"
+uv run archaeologist nabe3m/demo-repo orders/api.py 15 "この sleep(3) はなぜあるの?"
 
 # CLI で監査（削除 PR を実作成するので注意）
 uv run archaeologist-audit nabe3m/demo-repo orders/api.py

@@ -71,6 +71,7 @@ class GitHubToolbox:
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self._cache = cache or Cache(Path("/tmp/code-archaeologist-cache"))
+        self._head_cache: dict[tuple[str, str], str] = {}
         self._client = httpx.Client(
             transport=transport,
             headers={
@@ -104,6 +105,7 @@ class GitHubToolbox:
         return data
 
     def _blame_ranges(self, owner: str, repo: str, path: str, ref: str) -> list[dict]:
+        ref = self._resolve_ref(owner, repo, ref)
         data = self._graphql(
             _BLAME_QUERY, {"owner": owner, "repo": repo, "ref": ref, "path": path}
         )
@@ -216,6 +218,21 @@ class GitHubToolbox:
         response.raise_for_status()
         return response.json()
 
+    def _resolve_ref(self, owner: str, repo: str, ref: str) -> str:
+        """HEAD を実コミット SHA に解決する（インスタンス内で1回だけ取得）。
+
+        キャッシュキーを SHA 単位にすることで、リポジトリ更新後に
+        古い blame/ファイル内容を返し続けるステイルを防ぐ。
+        """
+        if ref != "HEAD":
+            return ref
+        key = (owner, repo)
+        if key not in self._head_cache:
+            self._head_cache[key] = self._get_fresh(
+                f"/repos/{owner}/{repo}/commits/HEAD"
+            )["sha"]
+        return self._head_cache[key]
+
     def _post(self, path: str, payload: dict) -> dict:
         response = self._client.post(f"{API}{path}", json=payload)
         response.raise_for_status()
@@ -289,12 +306,13 @@ class GitHubToolbox:
 
     def list_files(self, owner: str, repo: str) -> list[str]:
         """リポジトリの全ファイルパス（UI のファイルツリー用）。"""
-        default_branch = self._get(f"/repos/{owner}/{repo}")["default_branch"]
-        data = self._get(f"/repos/{owner}/{repo}/git/trees/{default_branch}?recursive=1")
+        sha = self._resolve_ref(owner, repo, "HEAD")
+        data = self._get(f"/repos/{owner}/{repo}/git/trees/{sha}?recursive=1")
         return [item["path"] for item in data["tree"] if item["type"] == "blob"]
 
     def get_file(self, owner: str, repo: str, path: str, ref: str = "HEAD") -> str:
         """ファイル本文を取得する（UI のコード表示用）。"""
+        ref = self._resolve_ref(owner, repo, ref)
         data = self._get(f"/repos/{owner}/{repo}/contents/{path}?ref={ref}")
         return base64.b64decode(data["content"]).decode()
 

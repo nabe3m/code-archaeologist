@@ -36,6 +36,19 @@ function Entry({ event }: { event: DigEvent }) {
         </li>
       );
     case "dig_decision":
+      if (event.payload.tool === "finish") {
+        // 調査終了は「過程の区切り」であって結論ではないため控えめに表示する
+        // （結論は史官/監査官が全証拠から出す）
+        return (
+          <li className="entry finish">
+            <span className="entry-icon">🔚</span>
+            <div>
+              <div className="entry-title">調査官が証拠収集を完了</div>
+              <div className="entry-body dim">{event.payload.reason}</div>
+            </div>
+          </li>
+        );
+      }
       return (
         <li className="entry decision">
           <span className="entry-icon">🤔</span>
