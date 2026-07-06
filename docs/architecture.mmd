@@ -1,0 +1,44 @@
+flowchart LR
+    subgraph user["👤 開発者"]
+        Q["質問<br/>「このコード、なぜこうなってる?<br/>消してもいい?」"]
+    end
+
+    subgraph cloudrun["☁️ Google Cloud Run（単一サービス）"]
+        UI["Web UI<br/>React + SSE<br/>調査過程をリアルタイム可視化"]
+        subgraph agents["AI エージェント"]
+            EX["🔍 調査官 Excavator<br/>blame→コミット→PR→Issue を<br/>自律遡行（毎ステップ LLM が判断）"]
+            HI["📜 史官 Historian<br/>証拠チェーンから<br/>出典リンク付き回答を合成"]
+            AU["⚖️ 監査官 Auditor<br/>失効した防御的コードを検出し<br/>削除 PR を自動作成"]
+        end
+        CACHE[("キャッシュ<br/>メモリ + ディスク")]
+    end
+
+    subgraph gcp["Google Cloud"]
+        GEMINI["✨ Gemini API<br/>判断: 2.5 Flash<br/>回答: 2.5 Pro"]
+        SM["Secret Manager"]
+        CB["Cloud Build<br/>push → deploy CD"]
+        AR["Artifact Registry"]
+    end
+
+    subgraph github["🐙 GitHub"]
+        REPO["対象リポジトリ<br/>git 履歴 / PR 議論 / Issue"]
+        PR["🎉 削除 PR<br/>（証拠リンク引用付き）"]
+    end
+
+    Q -->|SSE で調査過程が流れる| UI
+    UI --> EX
+    EX -->|"次にどこを掘る?"| GEMINI
+    EX -->|REST / GraphQL| CACHE
+    CACHE --> REPO
+    EX -->|証拠チェーン| HI
+    HI --> GEMINI
+    EX -->|証拠チェーン| AU
+    AU -->|判決| GEMINI
+    AU -->|ブランチ + 削除コミット| PR
+    SM -.->|API キー注入| cloudrun
+    CB -.-> AR -.->|イメージ| cloudrun
+
+    style cloudrun fill:#e8f0fe,stroke:#4285f4,stroke-width:3px
+    style GEMINI fill:#fef7e0,stroke:#f9ab00,stroke-width:3px
+    style agents fill:#ffffff,stroke:#5f6368
+    style PR fill:#e6f4ea,stroke:#34a853,stroke-width:2px
