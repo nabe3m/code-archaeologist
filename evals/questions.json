@@ -1,0 +1,45 @@
+{
+  "description": "考古学クイズ: 回答が正しい一次資料（PR/Issue/コミット）を引用できたかで採点する",
+  "questions": [
+    {
+      "id": "why-sleep",
+      "repo": "nabe3m/demo-repo",
+      "path": "orders/api.py",
+      "line": 14,
+      "question": "この sleep(3) はなぜあるの?",
+      "expected_sources": ["demo-repo/pull/2", "demo-repo/issues/1"]
+    },
+    {
+      "id": "sleep-still-needed",
+      "repo": "nabe3m/demo-repo",
+      "path": "orders/api.py",
+      "line": 14,
+      "question": "この sleep(3) は今も必要? 消してもいい?",
+      "expected_sources": ["demo-repo/pull/2"]
+    },
+    {
+      "id": "why-v2",
+      "repo": "nabe3m/demo-repo",
+      "path": "orders/inventory_client.py",
+      "line": 8,
+      "question": "BASE_URL が v2 を指しているのはなぜ? いつ移行した?",
+      "expected_sources": ["demo-repo/pull/4", "demo-repo/issues/3"]
+    },
+    {
+      "id": "origin-of-confirm",
+      "repo": "nabe3m/demo-repo",
+      "path": "orders/api.py",
+      "line": 16,
+      "question": "reserve の直後に get_reservation で再取得しているのはなぜ?",
+      "expected_sources": ["demo-repo/commit/"]
+    },
+    {
+      "id": "what-breaks",
+      "repo": "nabe3m/demo-repo",
+      "path": "orders/api.py",
+      "line": 14,
+      "question": "この行が導入される前、どんな障害が報告されていた?",
+      "expected_sources": ["demo-repo/issues/1"]
+    }
+  ]
+}
