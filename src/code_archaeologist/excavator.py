@@ -38,6 +38,7 @@ class Excavator:
         leads: list[dict] = [{"tool": "blame_line", "args": {"path": path, "line": line}}]
         target = {"owner": owner, "repo": repo, "path": path, "line": line}
         executed: list[dict] = []
+        finish_rejected = False
         stopped_by = "finish"
 
         yield DigEvent(
@@ -52,15 +53,40 @@ class Excavator:
                 break
             decision = self._decide(question, chain, leads, target, executed)
             steps += 1
+            if decision.tool == "finish":
+                # 自己点検: 未消化のリードや search_issues 未実行のまま早期終了する
+                # 傾向（LLM の満足化バイアス）を一度だけ差し戻して再考させる
+                searched = any(
+                    e["tool"] == "search_issues" and e["outcome"] == "ok" for e in executed
+                )
+                if not finish_rejected and (leads or not searched):
+                    finish_rejected = True
+                    reasons = []
+                    if leads:
+                        reasons.append("未消化の掘り先候補が残っています")
+                    if not searched:
+                        reasons.append(
+                            "search_issues 未実行です（当時の制約がその後解消されていないか確認）"
+                        )
+                    note = "。".join(reasons) + "。質問の全部分に証拠付きで答えられるか再確認してください"
+                    executed.append({"tool": "finish", "args": {}, "outcome": f"rejected: {note}"})
+                    yield DigEvent(
+                        type="error",
+                        payload={"tool": "finish", "message": f"自己点検で差し戻し: {note}"},
+                    )
+                    continue
+                yield DigEvent(
+                    type="dig_decision",
+                    payload={"tool": "finish", "args": {}, "reason": decision.reason},
+                )
+                break
             yield DigEvent(
                 type="dig_decision",
                 payload={"tool": decision.tool, "args": decision.args, "reason": decision.reason},
             )
-            if decision.tool == "finish":
-                break
 
             call = {"tool": decision.tool, "args": decision.args}
-            if call in executed:
+            if any(e["tool"] == call["tool"] and e["args"] == call["args"] for e in executed):
                 yield DigEvent(
                     type="error",
                     payload={"tool": decision.tool, "message": "実行済みの呼び出しです（スキップ）"},
@@ -70,16 +96,24 @@ class Excavator:
             try:
                 found, new_leads = self._execute(owner, repo, decision)
             except Exception as exc:  # 幻覚ツール名や API エラーでもループは止めない
-                executed.append(call)  # 同じ引数での再試行を防ぐ
+                # 結果を履歴に残す: LLM が次の判断でエラーから学べるようにする
+                executed.append({**call, "outcome": f"error: {exc}"})
                 yield DigEvent(
                     type="error",
                     payload={"tool": decision.tool, "message": str(exc)},
                 )
                 continue
 
-            executed.append(call)
+            executed.append({**call, "outcome": "ok"})
             leads = [lead for lead in leads if lead != call]
-            leads.extend(lead for lead in new_leads if lead not in leads)
+            leads.extend(
+                lead
+                for lead in new_leads
+                if lead not in leads
+                and not any(
+                    e["tool"] == lead["tool"] and e["args"] == lead["args"] for e in executed
+                )
+            )
             for evidence in found:
                 if chain.add(evidence):
                     yield DigEvent(

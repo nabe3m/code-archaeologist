@@ -85,6 +85,7 @@ def test_events_flow_decision_then_evidence_then_done():
             Decision(tool="blame_line", args={"path": "src/api.py", "line": 5}, reason="起点"),
             Decision(tool="get_commit", args={"sha": "bbb222"}, reason="blame先のコミットを読む"),
             Decision(tool="finish", args={}, reason="十分な証拠が揃った"),
+            Decision(tool="finish", args={}, reason="自己点検後も結論は同じ"),
         ]
     )
     events = run_dig(StubToolbox(), decide)
@@ -95,6 +96,7 @@ def test_events_flow_decision_then_evidence_then_done():
         "evidence_found",
         "dig_decision",
         "evidence_found",
+        "error",  # 早期 finish の自己点検差し戻し
         "dig_decision",  # finish の判断も可視化する
         "done",
     ]
@@ -107,6 +109,7 @@ def test_done_payload_contains_chain():
         [
             Decision(tool="blame_line", args={"path": "src/api.py", "line": 5}, reason="起点"),
             Decision(tool="finish", args={}, reason="ok"),
+            Decision(tool="finish", args={}, reason="再考後も ok"),
         ]
     )
     events = run_dig(StubToolbox(), decide)
@@ -131,6 +134,7 @@ def test_repeated_identical_call_is_not_reexecuted():
             Decision(tool="get_commit", args={"sha": "bbb222"}, reason="1回目"),
             Decision(tool="get_commit", args={"sha": "bbb222"}, reason="2回目(重複)"),
             Decision(tool="finish", args={}, reason="ok"),
+            Decision(tool="finish", args={}, reason="再考後も ok"),
         ]
     )
     events = run_dig(toolbox, decide)
@@ -153,6 +157,7 @@ def test_failed_call_is_not_retried_with_same_args():
             Decision(tool="blame_line", args={"path": "wrong.py", "line": 5}, reason="1回目"),
             Decision(tool="blame_line", args={"path": "wrong.py", "line": 5}, reason="同じ手を再試行"),
             Decision(tool="finish", args={}, reason="ok"),
+            Decision(tool="finish", args={}, reason="再考後も ok"),
         ]
     )
     run_dig(toolbox, decide)
@@ -164,23 +169,86 @@ def test_search_issues_yields_leads_for_each_hit():
         [
             Decision(tool="search_issues", args={"query": "inventory v2"}, reason="失効確認"),
             Decision(tool="finish", args={}, reason="ok"),
+            Decision(tool="finish", args={}, reason="再考後も ok"),
         ]
     )
     run_dig(StubToolbox(), decide)
     _, second_leads, _, _ = decide.seen[1]
     assert {"tool": "get_issue", "args": {"number": 3}} in second_leads
     assert {"tool": "get_pr", "args": {"number": 4}} in second_leads
+
+
+def test_decider_receives_executed_history():
     decide = scripted_decider(
         [
             Decision(tool="get_pr", args={"number": 42}, reason="PRを読む"),
             Decision(tool="finish", args={}, reason="ok"),
+            Decision(tool="finish", args={}, reason="再考後も ok"),
         ]
     )
     run_dig(StubToolbox(), decide)
     _, _, _, first_executed = decide.seen[0]
     _, _, _, second_executed = decide.seen[1]
     assert first_executed == []
-    assert second_executed == [{"tool": "get_pr", "args": {"number": 42}}]
+    assert second_executed == [
+        {"tool": "get_pr", "args": {"number": 42}, "outcome": "ok"}
+    ]
+
+
+def test_premature_finish_is_rejected_once():
+    # 未消化のリードが残ったままの finish は一度だけ差し戻し、再考させる
+    decide = scripted_decider(
+        [
+            Decision(tool="blame_line", args={"path": "src/api.py", "line": 5}, reason="起点"),
+            Decision(tool="finish", args={}, reason="もう十分（実は PR 未読）"),
+            Decision(tool="finish", args={}, reason="再考したがやはり十分"),
+        ]
+    )
+    events = run_dig(StubToolbox(), decide)
+    assert events[-1].type == "done"
+    # 差し戻しの事実が LLM の次回コンテキスト（実行履歴）に渡る
+    _, _, _, third_executed = decide.seen[2]
+    finish_entries = [e for e in third_executed if e["tool"] == "finish"]
+    assert len(finish_entries) == 1
+    assert finish_entries[0]["outcome"].startswith("rejected:")
+
+
+def test_finish_after_search_and_empty_leads_is_immediate():
+    decide = scripted_decider(
+        [
+            Decision(tool="blame_line", args={"path": "src/api.py", "line": 5}, reason="起点"),
+            Decision(tool="get_commit", args={"sha": "bbb222"}, reason="コミット"),
+            Decision(tool="get_pr", args={"number": 42}, reason="PR"),
+            Decision(tool="get_issue", args={"number": 12}, reason="Issue"),
+            Decision(tool="search_issues", args={"query": "v2"}, reason="失効確認"),
+            Decision(tool="get_issue", args={"number": 3}, reason="ヒットを読む"),
+            Decision(tool="get_pr", args={"number": 4}, reason="ヒットを読む"),
+            Decision(tool="finish", args={}, reason="完全"),
+        ]
+    )
+    events = run_dig(StubToolbox(), decide)
+    # リード全消化 + search 済みなら差し戻しなし = 台本どおり8回で終わる
+    # （get_pr(4) が参照する Issue #12 は実行済みなのでリードに戻らない）
+    assert events[-1].type == "done"
+    assert len(decide.seen) == 8
+
+
+def test_executed_history_records_error_outcome():
+    class FailingToolbox(StubToolbox):
+        def get_pr(self, owner, repo, number):
+            raise ValueError("404 Not Found: PR がありません")
+
+    decide = scripted_decider(
+        [
+            Decision(tool="get_pr", args={"number": 1}, reason="幻覚"),
+            Decision(tool="finish", args={}, reason="ok"),
+            Decision(tool="finish", args={}, reason="再考後も ok"),
+        ]
+    )
+    run_dig(FailingToolbox(), decide)
+    _, _, _, second_executed = decide.seen[1]
+    assert second_executed[0]["outcome"].startswith("error:")
+    assert "404" in second_executed[0]["outcome"]
 
 
 def test_unknown_tool_emits_error_and_continues():
@@ -188,6 +256,7 @@ def test_unknown_tool_emits_error_and_continues():
         [
             Decision(tool="warp_drive", args={}, reason="幻覚"),
             Decision(tool="finish", args={}, reason="ok"),
+            Decision(tool="finish", args={}, reason="再考後も ok"),
         ]
     )
     events = run_dig(StubToolbox(), decide)
@@ -200,6 +269,7 @@ def test_decider_sees_accumulated_evidence_and_leads():
         [
             Decision(tool="get_pr", args={"number": 42}, reason="PRを読む"),
             Decision(tool="finish", args={}, reason="ok"),
+            Decision(tool="finish", args={}, reason="再考後も ok"),
         ]
     )
     run_dig(StubToolbox(), decide)

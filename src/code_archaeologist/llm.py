@@ -34,10 +34,10 @@ _DECIDE_PROMPT = """あなたはコードの歴史を発掘する「調査官」
 ## これまでに発掘した証拠
 {context}
 
-## 実行済みの呼び出し（結果は証拠に反映済み。同じ呼び出しを繰り返さない）
+## 実行済みの呼び出しと結果（同じ呼び出しを繰り返さない。error は引数が間違っていた可能性が高い）
 {executed}
 
-## 次の掘り先候補（機械的に抽出したもの。従う義務はない）
+## 次の掘り先候補（API から機械抽出した正確な番号。原則ここから選ぶ）
 {leads}
 
 ## 使える道具
@@ -48,12 +48,15 @@ _DECIDE_PROMPT = """あなたはコードの歴史を発掘する「調査官」
 - search_issues(query: str): リポジトリ内の Issue/PR をキーワード検索（制約がその後解消されたかの前方調査に使う）
 - finish(): 質問に答えるのに十分な証拠が揃ったら調査終了
 
-## 判断基準
-- 証拠が空なら、まず blame_line で起点を作る
-- 「なぜ」に直結する一次情報（PR 議論・Issue）を優先して掘る
-- 掘り先候補は API から機械抽出した確実な番号。**コミットメッセージ中の「#N」は Issue のことも多く、PR 番号として信用しない**。コミットに紐づく PR は候補の get_pr を使う
-- 質問が「今も必要か・有効か」を含むなら、当時の制約（例: 依存 API の仕様）がその後解消されていないか search_issues で確認してから終える（例: query="inventory v2 移行"）
-- 同じ場所を二度掘らない。エラーになった呼び出しを同じ引数で繰り返さない。十分に揃ったら潔く finish
+## 進め方（上から順に守ること）
+1. 証拠が空なら blame_line で起点を作る
+2. コミットを見つけたら**コミットメッセージだけで満足せず**、紐づく PR（掘り先候補の get_pr）とその議論・参照 Issue を必ず読む。「なぜ」の一次情報はコミットではなく PR 議論と Issue にある
+3. 質問に「今も必要か・有効か・消せるか」が含まれる場合、**finish の前に必ず search_issues で当時の制約のその後**（解消・バージョン移行・EOL 等）を調べ、ヒットした Issue/PR も読む（例: query="inventory v2"）
+4. finish してよいのは「質問のすべての部分に証拠番号付きで答えられる」ときだけ。答えられない部分があるのに未消化の掘り先候補や search_issues が残っているなら、先にそれを実行する
+
+## 注意
+- 掘り先候補は API から機械抽出した確実な番号。**コミットメッセージ中の「#N」は Issue のことも多く、PR 番号として信用しない**
+- エラーになった呼び出しを同じ引数で繰り返さない
 - reason には「何を根拠に、なぜそこを掘るのか」を日本語で1文で書く（ユーザーに表示される）
 """
 
@@ -104,11 +107,22 @@ class GeminiAgents:
         target: dict,
         executed: list[dict],
     ) -> Decision:
+        def render_call(tool: str, args: dict) -> str:
+            rendered_args = ", ".join(f"{k}={v!r}" for k, v in args.items())
+            return f"{tool}({rendered_args})"
+
+        leads_text = "\n".join(
+            f"- {render_call(lead['tool'], lead['args'])}" for lead in leads
+        )
+        executed_text = "\n".join(
+            f"- {render_call(e['tool'], e['args'])} → {e.get('outcome', 'ok')}"
+            for e in executed
+        )
         prompt = _DECIDE_PROMPT.format(
             question=question,
             context=chain.as_context() or "（まだ何もない）",
-            leads=leads or "（なし）",
-            executed=executed or "（なし）",
+            leads=leads_text or "（なし。search_issues で新しい手がかりを探すか finish）",
+            executed=executed_text or "（なし）",
             **target,
         )
         response = _with_quota_backoff(
