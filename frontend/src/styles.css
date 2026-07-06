@@ -59,8 +59,23 @@ body {
 
 .dig-form {
   display: grid;
-  grid-template-columns: 280px 110px 1fr auto auto;
+  grid-template-columns: 280px 110px 1fr auto auto auto;
   gap: 8px;
+}
+
+.stop-button {
+  background: transparent;
+  color: var(--error);
+  border: 1px solid var(--error);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.stop-button:hover {
+  background: rgba(217, 108, 74, 0.12);
 }
 
 .repo-group {

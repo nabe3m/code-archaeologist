@@ -5,7 +5,7 @@ import { FileTree } from "./components/FileTree";
 import { Timeline } from "./components/Timeline";
 import { AnswerPane } from "./components/AnswerPane";
 
-type Phase = "idle" | "digging" | "done" | "failed";
+type Phase = "idle" | "digging" | "done" | "failed" | "stopped";
 type Mode = "dig" | "audit";
 
 const DEMO = {
@@ -141,6 +141,11 @@ export default function App() {
     [repo, path, code, question, selStart, selEnd, openFile],
   );
 
+  const stop = useCallback(() => {
+    sourceRef.current?.close();
+    setPhase("stopped");
+  }, []);
+
   const digging = phase === "digging";
 
   return (
@@ -205,6 +210,16 @@ export default function App() {
           >
             {digging && mode === "audit" ? "監査中…" : "⚖️ 監査する"}
           </button>
+          {digging ? (
+            <button
+              className="stop-button"
+              type="button"
+              title="実行中の調査を中断します"
+              onClick={stop}
+            >
+              ⏹ 停止
+            </button>
+          ) : null}
         </form>
       </header>
 

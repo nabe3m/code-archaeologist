@@ -5,7 +5,7 @@ interface Props {
   verdict: Verdict | null;
   prUrl: string | null;
   mode: "dig" | "audit";
-  phase: "idle" | "digging" | "done" | "failed";
+  phase: "idle" | "digging" | "done" | "failed" | "stopped";
 }
 
 /** 回答本文中の [n] を対応する出典へのリンクに変換して描画する */
@@ -32,7 +32,11 @@ function DigResult({ answer, phase }: { answer: Answer | null; phase: Props["pha
   if (answer === null) {
     return (
       <p className="placeholder">
-        {phase === "digging" ? "証拠が揃い次第、出典リンク付きの回答がここに表示されます" : "—"}
+        {phase === "digging"
+          ? "証拠が揃い次第、出典リンク付きの回答がここに表示されます"
+          : phase === "stopped"
+            ? "調査を停止しました"
+            : "—"}
       </p>
     );
   }
@@ -65,7 +69,9 @@ function AuditResult({ verdict, prUrl, phase }: { verdict: Verdict | null; prUrl
       <p className="placeholder">
         {phase === "digging"
           ? "防御的コードを検出し、歴史を発掘して判決を下します"
-          : "—"}
+          : phase === "stopped"
+            ? "監査を停止しました"
+            : "—"}
       </p>
     );
   }

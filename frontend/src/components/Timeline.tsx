@@ -3,7 +3,7 @@ import type { DigEvent } from "../types";
 
 interface Props {
   events: DigEvent[];
-  phase: "idle" | "digging" | "done" | "failed";
+  phase: "idle" | "digging" | "done" | "failed" | "stopped";
 }
 
 const TOOL_LABELS: Record<string, string> = {
