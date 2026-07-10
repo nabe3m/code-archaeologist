@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Answer, DigEvent, Verdict } from "./types";
+import type { Answer, DigEvent, Prophecy, Verdict } from "./types";
 import { CodePane } from "./components/CodePane";
 import { FileTree } from "./components/FileTree";
 import { Timeline } from "./components/Timeline";
@@ -11,6 +11,7 @@ type Mode = "dig" | "audit";
 export interface AuditResult {
   verdict: Verdict;
   prUrl: string | null;
+  oracle: Prophecy | null;
 }
 
 const DEMO = {
@@ -123,13 +124,20 @@ export default function App() {
             break;
           case "verdict":
             // 監査は複数候補を順に処理するため、判決は一覧に積む
-            setAuditResults((prev) => [...prev, { verdict: event.payload, prUrl: null }]);
+            setAuditResults((prev) => [...prev, { verdict: event.payload, prUrl: null, oracle: null }]);
             gotResultRef.current = true;
             break;
           case "pr_created":
             setAuditResults((prev) =>
               prev.map((r, i) =>
                 i === prev.length - 1 ? { ...r, prUrl: event.payload.url } : r,
+              ),
+            );
+            break;
+          case "oracle":
+            setAuditResults((prev) =>
+              prev.map((r, i) =>
+                i === prev.length - 1 ? { ...r, oracle: event.payload } : r,
               ),
             );
             break;

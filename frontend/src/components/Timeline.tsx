@@ -137,6 +137,20 @@ function Entry({ event }: { event: DigEvent }) {
           </div>
         </li>
       );
+    case "oracle":
+      return (
+        <li className="entry evidence">
+          <span className="entry-icon">🔮</span>
+          <div>
+            <div className="entry-title">Oracle の予言を PR にコメント</div>
+            <div className="entry-body">
+              <a href={event.payload.comment_url} target="_blank" rel="noreferrer">
+                守っていた障害と再発時の対処を記録しました
+              </a>
+            </div>
+          </div>
+        </li>
+      );
     default:
       return null;
   }

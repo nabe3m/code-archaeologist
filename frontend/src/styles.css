@@ -220,6 +220,20 @@ body {
   font-weight: 700;
 }
 
+.oracle-note {
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-left: 3px solid #a855f7;
+  background: rgba(168, 85, 247, 0.08);
+  border-radius: 6px;
+  font-size: 0.92em;
+}
+
+.oracle-note .oracle-title {
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+
 /* ---- panes ---- */
 .panes {
   display: grid;

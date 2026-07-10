@@ -9,13 +9,21 @@ export type DigEvent =
   | { type: "answer"; payload: Answer }
   | { type: "audit_candidate"; payload: { line: number; snippet: string; reason: string } }
   | { type: "verdict"; payload: Verdict }
-  | { type: "pr_created"; payload: { number: number; url: string } };
+  | { type: "pr_created"; payload: { number: number; url: string } }
+  | { type: "oracle"; payload: Prophecy };
 
 export interface Verdict {
   expired: boolean;
   justification: string;
   lines_to_remove: number[];
   candidate: { line: number; snippet: string; reason: string };
+}
+
+export interface Prophecy {
+  guarded_incident: string;
+  recurrence_symptoms: string;
+  rollback_hint: string;
+  comment_url: string;
 }
 
 export interface Target {

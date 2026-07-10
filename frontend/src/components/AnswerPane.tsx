@@ -1,4 +1,4 @@
-import type { Answer, Verdict } from "../types";
+import type { Answer, Prophecy, Verdict } from "../types";
 import type { AuditResult } from "../App";
 
 interface Props {
@@ -25,6 +25,24 @@ function CitedText({ text, answer }: { text: string; answer: Answer }) {
         );
       })}
     </>
+  );
+}
+
+function OracleNote({ oracle }: { oracle: Prophecy }) {
+  return (
+    <div className="oracle-note">
+      <p className="oracle-title">🔮 Oracle の予言 — このコードが守っていた障害</p>
+      <p>{oracle.guarded_incident}</p>
+      <p>
+        <strong>再発の兆候:</strong> {oracle.recurrence_symptoms}
+      </p>
+      <p>
+        <strong>対処:</strong> {oracle.rollback_hint}
+      </p>
+      <a href={oracle.comment_url} target="_blank" rel="noreferrer">
+        PR に投稿された予言コメントを見る →
+      </a>
+    </div>
   );
 }
 
@@ -63,7 +81,7 @@ function DigResult({ answer, phase }: { answer: Answer | null; phase: Props["pha
   );
 }
 
-function VerdictCard({ verdict, prUrl }: { verdict: Verdict; prUrl: string | null }) {
+function VerdictCard({ verdict, prUrl, oracle }: { verdict: Verdict; prUrl: string | null; oracle: Prophecy | null }) {
   return (
     <div className="verdict-card">
       <p className="verdict-badge-row">
@@ -86,6 +104,7 @@ function VerdictCard({ verdict, prUrl }: { verdict: Verdict; prUrl: string | nul
       ) : (
         <p className="keep-note">このコードの前提はまだ生きています。削除 PR は作成しません。</p>
       )}
+      {oracle ? <OracleNote oracle={oracle} /> : null}
     </div>
   );
 }
@@ -105,7 +124,7 @@ function AuditResults({ results, phase }: { results: AuditResult[]; phase: Props
   return (
     <div className="verdict-list">
       {results.map((r, i) => (
-        <VerdictCard key={i} verdict={r.verdict} prUrl={r.prUrl} />
+        <VerdictCard key={i} verdict={r.verdict} prUrl={r.prUrl} oracle={r.oracle} />
       ))}
       {phase === "digging" ? <p className="placeholder">次の候補を監査中…</p> : null}
     </div>
