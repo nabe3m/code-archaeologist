@@ -51,6 +51,10 @@ def main() -> None:
     load_dotenv()
     parser = argparse.ArgumentParser()
     parser.add_argument("--id", help="この ID の質問だけ実行する")
+    parser.add_argument(
+        "--min-pass", type=int, default=None,
+        help="合格ライン(この数以上 pass で exit 0)。未指定なら全問合格が条件",
+    )
     args = parser.parse_args()
 
     for var in ("GEMINI_API_KEY", "GITHUB_TOKEN"):
@@ -78,7 +82,8 @@ def main() -> None:
 
     passed = sum(1 for r in results if r["passed"])
     print(f"\n== {passed}/{len(results)} passed ==")
-    sys.exit(0 if passed == len(results) else 1)
+    required = args.min_pass if args.min_pass is not None else len(results)
+    sys.exit(0 if passed >= required else 1)
 
 
 if __name__ == "__main__":
