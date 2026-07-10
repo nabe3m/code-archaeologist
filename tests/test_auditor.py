@@ -25,6 +25,7 @@ class StubToolbox:
     def __init__(self):
         self.calls = []
         self.deletion_pr_kwargs = None
+        self.comment_body = None
 
     def get_file(self, owner, repo, path, ref="HEAD"):
         self.calls.append("get_file")
@@ -58,6 +59,11 @@ class StubToolbox:
         self.deletion_pr_kwargs = kwargs
         return {"number": 9, "url": "https://github.com/o/r/pull/9"}
 
+    def post_pr_comment(self, owner, repo, number, body):
+        self.calls.append(f"post_pr_comment({number})")
+        self.comment_body = body
+        return {"url": f"https://github.com/o/r/pull/{number}#issuecomment-1"}
+
 
 def stub_dig(owner, repo, path, line, question):
     """発掘の代役: blame 証拠1件 → done(chain) を流す。"""
@@ -72,7 +78,7 @@ def stub_dig(owner, repo, path, line, question):
     )
 
 
-def make_auditor(toolbox, expired=True):
+def make_auditor(toolbox, expired=True, prophesy=None):
     judged_chains = []
 
     def find_candidates(path, code):
@@ -95,6 +101,7 @@ def make_auditor(toolbox, expired=True):
         find_candidates=find_candidates,
         forward_query=forward_query,
         judge=judge,
+        prophesy=prophesy,
     )
     auditor._judged_chains = judged_chains
     return auditor
@@ -133,3 +140,69 @@ def test_valid_code_creates_no_pr():
     verdicts = [e for e in events if e.type == "verdict"]
     assert verdicts[0].payload["expired"] is False
     assert all(e.type != "pr_created" for e in events)
+
+
+def stub_prophesy(candidate, chain_verdict, chain):
+    from code_archaeologist.models import Prophecy
+
+    return Prophecy(
+        guarded_incident="在庫 v1 の結果整合で書き込み直後の読み取りが 404 になった [1]",
+        recurrence_symptoms="注文直後の在庫参照が 404 を返す",
+        rollback_hint="この PR を revert して sleep を戻す",
+    )
+
+
+def test_oracle_posts_prophecy_comment_after_pr_created():
+    toolbox = StubToolbox()
+    events = list(
+        make_auditor(toolbox, prophesy=stub_prophesy).audit("o", "r", "orders/api.py")
+    )
+    types = [e.type for e in events]
+    assert types[-2:] == ["pr_created", "oracle"]
+    assert "post_pr_comment(9)" in toolbox.calls
+    # コメント本文に予言の中身が入る
+    assert "404" in toolbox.comment_body
+    assert "revert" in toolbox.comment_body
+    # UI 用イベントにコメント URL が載る
+    assert events[-1].payload["comment_url"].endswith("#issuecomment-1")
+    assert "404" in events[-1].payload["guarded_incident"]
+
+
+def test_oracle_failure_degrades_to_error_event():
+    toolbox = StubToolbox()
+
+    def broken_prophesy(candidate, verdict, chain):
+        raise RuntimeError("LLM down")
+
+    events = list(
+        make_auditor(toolbox, prophesy=broken_prophesy).audit("o", "r", "orders/api.py")
+    )
+    # PR は作成済みのまま、Oracle の失敗は error イベントに落ちて監査は完走する
+    assert any(e.type == "pr_created" for e in events)
+    assert any(e.type == "error" and "Oracle" in e.payload["message"] for e in events)
+    assert all(e.type != "oracle" for e in events)
+
+
+def test_oracle_stays_silent_without_evidence():
+    """証拠チェーンが空なら予言しない(捏造防止)。"""
+    toolbox = StubToolbox()
+    toolbox.search_issues = lambda owner, repo, query: []  # 前方調査もヒットなし
+
+    def empty_dig(owner, repo, path, line, question):
+        yield DigEvent(
+            type="done",
+            payload={"steps": 0, "evidence_count": 0, "stopped_by": "finish",
+                     "chain": EvidenceChain().model_dump()},
+        )
+
+    called = []
+
+    def spy_prophesy(candidate, verdict, chain):
+        called.append(True)
+        return stub_prophesy(candidate, verdict, chain)
+
+    auditor = make_auditor(toolbox, prophesy=spy_prophesy)
+    auditor._dig = empty_dig
+    events = list(auditor.audit("o", "r", "orders/api.py"))
+    assert not called
+    assert all(e.type != "oracle" for e in events)

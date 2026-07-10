@@ -22,6 +22,7 @@ EventType = Literal[
     "audit_candidate",
     "verdict",
     "pr_created",
+    "oracle",
 ]
 
 
@@ -73,3 +74,15 @@ class EvidenceChain(BaseModel):
 class DigEvent(BaseModel):
     type: EventType
     payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class Prophecy(BaseModel):
+    """Oracle の予言 — 削除されるコードがかつて守っていた障害の記録。
+
+    guarded_incident の主張には証拠番号 [n] を付ける(番号は削除 PR 本文の
+    「発掘された証拠」リストに対応)。
+    """
+
+    guarded_incident: str
+    recurrence_symptoms: str
+    rollback_hint: str
