@@ -44,6 +44,11 @@ def toolbox(tmp_path, write_log):
                     },
                 )
             return httpx.Response(200, json={"commit": {"sha": "newsha"}})
+        if path == "/repos/o/r/issues/9/comments" and request.method == "POST":
+            return httpx.Response(
+                201,
+                json={"html_url": "https://github.com/o/r/pull/9#issuecomment-42"},
+            )
         if path == "/repos/o/r/pulls" and request.method == "POST":
             return httpx.Response(
                 201, json={"number": 9, "html_url": "https://github.com/o/r/pull/9"}
@@ -89,3 +94,10 @@ def test_create_deletion_pr_removes_exact_lines_and_targets_branch(toolbox, writ
     pr_body = write_log[2][2]
     assert pr_body["head"] == "audit/remove-sleep"
     assert pr_body["base"] == "main"
+
+
+def test_post_pr_comment_returns_comment_url(toolbox, write_log):
+    result = toolbox.post_pr_comment("o", "r", 9, "🔮 予言")
+    assert result == {"url": "https://github.com/o/r/pull/9#issuecomment-42"}
+    assert ("POST", "/repos/o/r/issues/9/comments") in [(m, p) for m, p, _ in write_log]
+    assert write_log[-1][2] == {"body": "🔮 予言"}

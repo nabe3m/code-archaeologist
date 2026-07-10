@@ -285,6 +285,11 @@ class GitHubToolbox:
         )
         return {"number": pr["number"], "url": pr["html_url"]}
 
+    def post_pr_comment(self, owner: str, repo: str, number: int, body: str) -> dict:
+        """PR にコメントを投稿する(Oracle の予言の出口)。PR コメントは Issues API を使う。"""
+        data = self._post(f"/repos/{owner}/{repo}/issues/{number}/comments", {"body": body})
+        return {"url": data["html_url"]}
+
     def search_issues(self, owner: str, repo: str, query: str) -> list[dict]:
         """リポジトリ内の Issue/PR をキーワード検索する。
 
