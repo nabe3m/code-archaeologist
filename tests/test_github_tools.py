@@ -136,6 +136,13 @@ def toolbox(tmp_path, requests_seen, head_state):
                             "html_url": "https://github.com/o/r/pull/4",
                             "pull_request": {"url": "https://api.github.com/repos/o/r/pulls/4"},
                         },
+                        {
+                            "number": 14,
+                            "title": "chore: 理由が失効した防御的コードを削除 (orders/api.py:15)",
+                            "state": "open",
+                            "html_url": "https://github.com/o/r/pull/14",
+                            "pull_request": {"url": "https://api.github.com/repos/o/r/pulls/14"},
+                        },
                     ]
                 },
             )
@@ -217,6 +224,17 @@ def test_get_pr_returns_discussion_and_referenced_issues(toolbox):
     assert result.comments[0].kind == "pr_comment"
     # 本文の #12 とコメントの #7 を拾い、自分自身 (#42) は含めない
     assert sorted(result.referenced_issues) == [7, 12]
+
+
+def test_search_issues_excludes_own_deletion_prs(toolbox):
+    """自分(監査官)が作った削除 PR を一次資料として拾わない。
+
+    エージェントの成果物が増えるほど検索結果を汚染し、史官がオリジナルの
+    PR/Issue ではなく「自分の過去の要約」を引用してしまうのを構造的に防ぐ。
+    """
+    hits = toolbox.search_issues("o", "r", "inventory v2")
+    assert all(not h["title"].startswith("chore: 理由が失効した防御的コード") for h in hits)
+    assert [h["number"] for h in hits] == [3, 4]
 
 
 def test_search_issues_returns_hits_with_pr_flag(toolbox):

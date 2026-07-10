@@ -14,7 +14,7 @@ from collections.abc import Callable, Iterator
 
 from pydantic import BaseModel
 
-from .models import DigEvent, EvidenceChain, Prophecy
+from .models import AUDITOR_PR_TITLE_PREFIX, DigEvent, EvidenceChain, Prophecy
 
 
 class Candidate(BaseModel):
@@ -104,7 +104,7 @@ class Auditor:
                     path=path,
                     lines=verdict.lines_to_remove,
                     branch=f"code-archaeologist/remove-{slug}-L{candidate.line}",
-                    title=f"chore: 理由が失効した防御的コードを削除 ({path}:{candidate.line})",
+                    title=f"{AUDITOR_PR_TITLE_PREFIX} ({path}:{candidate.line})",
                     body=self._pr_body(candidate, verdict, chain, path),
                     commit_message=(
                         f"chore: remove expired workaround at {path}:{candidate.line}\n\n"

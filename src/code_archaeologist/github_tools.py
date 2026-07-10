@@ -13,7 +13,7 @@ import httpx
 from pydantic import BaseModel
 
 from .cache import Cache
-from .models import Evidence
+from .models import AUDITOR_PR_TITLE_PREFIX, Evidence
 
 API = "https://api.github.com"
 
@@ -307,6 +307,10 @@ class GitHubToolbox:
                 "url": item["html_url"],
             }
             for item in data["items"]
+            # 監査官自身が過去に作った削除 PR は除外する。放置すると成果物が
+            # 増えるたびに検索を汚染し、史官が一次資料でなく「自分の過去の要約」を
+            # 引用するようになる（実測で evals 5/5 → 2/5 まで劣化した）
+            if not item["title"].startswith(AUDITOR_PR_TITLE_PREFIX)
         ]
 
     def list_files(self, owner: str, repo: str) -> list[str]:

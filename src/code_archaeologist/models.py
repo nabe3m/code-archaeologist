@@ -11,6 +11,10 @@ EvidenceKind = Literal[
     "blame", "commit", "pull_request", "pr_comment", "issue", "issue_comment"
 ]
 
+# 監査官が作る削除 PR のタイトル接頭辞。search_issues はこれに一致する PR を
+# 掘り先候補から除外する（エージェント自身の成果物を一次資料として扱わない）
+AUDITOR_PR_TITLE_PREFIX = "chore: 理由が失効した防御的コードを削除"
+
 EventType = Literal[
     "dig_started",
     "dig_decision",
