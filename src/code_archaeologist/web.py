@@ -117,6 +117,7 @@ def audit(repo: str, path: str):
         find_candidates=agents.find_candidates,
         forward_query=agents.forward_query,
         judge=agents.judge,
+        prophesy=agents.prophesy,
     )
 
     def stream():

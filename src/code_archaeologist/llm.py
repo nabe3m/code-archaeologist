@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from .auditor import Candidate, Verdict
 from .excavator import Decision
-from .models import EvidenceChain
+from .models import EvidenceChain, Prophecy
 
 EXCAVATOR_MODEL = os.environ.get("EXCAVATOR_MODEL", "gemini-2.5-flash")
 HISTORIAN_MODEL = os.environ.get("HISTORIAN_MODEL", "gemini-2.5-pro")
@@ -220,6 +220,24 @@ class GeminiAgents:
             f"## ファイル全体\n```\n{numbered}\n```\n\n"
             f"## 証拠チェーン（番号は引用用）\n{chain.as_context()}",
             Verdict,
+        )
+
+    def prophesy(
+        self, candidate: Candidate, verdict: Verdict, chain: EvidenceChain
+    ) -> Prophecy:
+        return self._structured(
+            "あなたは削除 PR に警告を残す「予言者 Oracle」です。削除されるコードが"
+            "かつて守っていた障害を証拠チェーンから特定し、削除後にもし問題が再発した"
+            "場合に備えた注意書きを作ってください。\n"
+            "- guarded_incident: このコードが守っていた過去の障害の要約(2〜3文)。"
+            "主張には必ず証拠番号 [n] を付ける\n"
+            "- recurrence_symptoms: 再発した場合に観測されるであろう具体的な兆候"
+            "(エラー・症状。1〜2文)\n"
+            "- rollback_hint: 再発時の対処。この PR の revert を第一手として含める(1〜2文)\n\n"
+            f"## 削除されるコード: {candidate.line} 行目の `{candidate.snippet}`\n\n"
+            f"## 削除の判定理由(失効の根拠)\n{verdict.justification}\n\n"
+            f"## 証拠チェーン(番号は引用用)\n{chain.as_context()}",
+            Prophecy,
         )
 
 

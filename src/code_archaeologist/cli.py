@@ -24,6 +24,7 @@ ICONS = {
     "audit_candidate": "🔎",
     "verdict": "⚖️",
     "pr_created": "🎉",
+    "oracle": "🔮",
 }
 
 
@@ -99,6 +100,7 @@ def main_audit() -> None:
         find_candidates=agents.find_candidates,
         forward_query=agents.forward_query,
         judge=agents.judge,
+        prophesy=agents.prophesy,
     )
 
     for event in auditor.audit(owner, repo, args.path):
@@ -123,6 +125,9 @@ def main_audit() -> None:
                 print(f"{icon} 判決: {status}\n   {p['justification']}")
             case "pr_created":
                 print(f"{icon} 削除 PR を作成しました: {p['url']}")
+            case "oracle":
+                print(f"{icon} 予言を PR にコメントしました: {p['comment_url']}")
+                print(f"   守っていた障害: {p['guarded_incident']}")
 
 
 if __name__ == "__main__":
