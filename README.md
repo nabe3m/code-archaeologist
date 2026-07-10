@@ -55,6 +55,7 @@ Code Archaeologist は、この「コードの考古学」を AI エージェン
 - **GitHub キャッシュ**（メモリ + ディスク）: デモがレート制限で死なない
 - **LLM は Vertex AI 経由（鍵レス）**: Cloud Run のサービスアカウント + Workload Identity で認証し、ランタイムは Gemini の API キーを持たない。`GOOGLE_GENAI_USE_VERTEXAI` の切替1つで Developer API にも即戻せる
 - **CD + 品質ゲート**: `cloudbuild.yaml` により push → ビルド → **evals をデプロイ前に実行（4/5 未満はデプロイ中止）** → Cloud Run デプロイ。プロンプト・モデル変更のデグレが本番に届かない。シークレットは Secret Manager
+- ただし evals ゲートは Developer API キーで実行されており、本番の Vertex AI 認証経路自体は検証しない（Vertex 側の障害時は `GOOGLE_GENAI_USE_VERTEXAI=false` への env 切替1コマンドでロールバック可能）
 
 ## 技術選定の理由
 

@@ -106,12 +106,17 @@ def _with_quota_backoff(call, attempts: int = 4):
 
 class GeminiAgents:
     def __init__(self, api_key: str | None = None) -> None:
+        # クライアント側タイムアウト: GitHub 側 httpx は timeout=30 済みだが LLM 呼び出しは
+        # 無制限だったため、ストール時に SSE ワーカースレッドが無期限に固まる事象が実測されている
         if os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").lower() == "true":
             # Vertex AI: ADC + GOOGLE_CLOUD_PROJECT / GOOGLE_CLOUD_LOCATION を SDK が読む。
             # Cloud Run では Workload Identity により鍵レス
-            self._client = genai.Client()
+            self._client = genai.Client(http_options={"timeout": 120_000})
         else:
-            self._client = genai.Client(api_key=api_key or os.environ["GEMINI_API_KEY"])
+            self._client = genai.Client(
+                api_key=api_key or os.environ["GEMINI_API_KEY"],
+                http_options={"timeout": 120_000},
+            )
 
     def decide(
         self,

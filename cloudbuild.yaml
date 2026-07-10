@@ -14,6 +14,8 @@ steps:
       - -t
       - ${_REGION}-docker.pkg.dev/$PROJECT_ID/app/${_SERVICE}:latest
       - .
+  # :latest はここで evals ゲートより前に push されるため、ゲート失敗時も上書きされる
+  # (デプロイは $SHORT_SHA 固定なので本番は安全。:latest を直接デプロイしないこと)
   - name: gcr.io/cloud-builders/docker
     args: ["push", "--all-tags", "${_REGION}-docker.pkg.dev/$PROJECT_ID/app/${_SERVICE}"]
   # 品質ゲート: プロンプト/モデル変更のデグレをデプロイ前に検出する。

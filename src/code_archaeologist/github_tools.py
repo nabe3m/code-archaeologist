@@ -297,7 +297,9 @@ class GitHubToolbox:
         結果は掘り先候補（get_issue / get_pr）への入口になる。
         """
         q = f"repo:{owner}/{repo} {query}"
-        data = self._get(f"/search/issues?q={q}&per_page=10")
+        # per_page は 30: 自己PRフィルタはクライアント側なので、削除PRが増えると
+        # 先頭ページが自分のPRで埋まり、フィルタ前に一次資料がページ外へ押し出されるのを防ぐ
+        data = self._get(f"/search/issues?q={q}&per_page=30")
         return [
             {
                 "number": item["number"],
