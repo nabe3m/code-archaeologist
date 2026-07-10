@@ -53,7 +53,8 @@ Code Archaeologist は、この「コードの考古学」を AI エージェン
 - **単一 Cloud Run サービス**: FastAPI が React SPA を配信し、調査過程は **SSE** でストリーム。デモ URL 1つで完結
 - **調査過程 = 構造化イベント**: 調査官の全判断（何を根拠に次へ掘ったか）を `dig_decision` / `evidence_found` 等のイベントとして発行。UI・構造化ログ・デモ動画の素材が1つの仕組みから出る
 - **GitHub キャッシュ**（メモリ + ディスク）: デモがレート制限で死なない
-- **CD**: `cloudbuild.yaml` により push → ビルド → Cloud Run デプロイ。シークレットは Secret Manager
+- **LLM は Vertex AI 経由（鍵レス）**: Cloud Run のサービスアカウント + Workload Identity で認証し、ランタイムは Gemini の API キーを持たない。`GOOGLE_GENAI_USE_VERTEXAI` の切替1つで Developer API にも即戻せる
+- **CD + 品質ゲート**: `cloudbuild.yaml` により push → ビルド → **evals をデプロイ前に実行（4/5 未満はデプロイ中止）** → Cloud Run デプロイ。プロンプト・モデル変更のデグレが本番に届かない。シークレットは Secret Manager
 
 ## 技術選定の理由
 
@@ -110,13 +111,11 @@ gcloud builds submit --config cloudbuild.yaml --substitutions SHORT_SHA=$(git re
 uv run python evals/run.py
 ```
 
-現在 **5/5**（LLM の揺らぎで時折 4/5）。この evals は開発中に実際のバグを2つ捕捉しました:
+現在 **5/5**（LLM の揺らぎで時折 4/5）。この evals は **Cloud Build の品質ゲート**としてデプロイ前に毎回実行され、`--min-pass 4` を下回るとデプロイが中止されます（プロンプト・モデル変更のデグレを本番前に検出）。開発中には実際のバグを2つ捕捉しました:
 
 1. 「調査官がコミットメッセージで満足して PR 議論まで掘らない」早期終了バイアス → 監査官の「失効確認の強制実行」設計につながった
 2. **structured output のツール enum に `search_issues` が漏れており、モデルが検索を「選べなかった」**という決定的なスキーマバグ → プロンプト改善で直らない挙動の根本原因を evals の失敗が特定した
 
 ## 今後の拡張
 
-- **評価パイプラインの CI 統合**: evals/ を Cloud Build に組み込み、プロンプト・モデル変更のデグレをデプロイ前に検出
-- **Vertex AI 移行**: `genai.Client` の初期化切替のみ。実運用では Workload Identity で鍵レス化
 - **私有リポジトリ対応 / GitHub App 化**: 現在は PAT。組織導入には App インストール型が適切

@@ -35,6 +35,9 @@ steps:
       - --region=${_REGION}
       - --allow-unauthenticated
       - --set-secrets=GEMINI_API_KEY=gemini-api-key:latest,GITHUB_TOKEN=github-token:latest
+      # LLM は Vertex AI 経由（鍵レス）。問題時は GOOGLE_GENAI_USE_VERTEXAI=false で
+      # 上の API キー（フォールバックとして残置）に即戻せる
+      - --set-env-vars=GOOGLE_GENAI_USE_VERTEXAI=true,GOOGLE_CLOUD_PROJECT=code-archaeologist-hackathon,GOOGLE_CLOUD_LOCATION=global
       - --memory=1Gi
       - --timeout=300
 

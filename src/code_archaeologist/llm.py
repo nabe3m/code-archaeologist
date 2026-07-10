@@ -2,7 +2,7 @@
 
 - 調査官の判断: Flash 系（多数回呼ぶ・低コスト）。structured output で Decision を得る
 - 史官の回答: 上位モデル（1回だけ・品質勝負）
-モデルは環境変数で差し替え可能。Vertex AI へは Client 初期化の切替のみで移行できる。
+モデルは環境変数で差し替え可能。`GOOGLE_GENAI_USE_VERTEXAI=true` で Vertex AI 経由（鍵レス）。
 """
 
 import os
@@ -106,7 +106,12 @@ def _with_quota_backoff(call, attempts: int = 4):
 
 class GeminiAgents:
     def __init__(self, api_key: str | None = None) -> None:
-        self._client = genai.Client(api_key=api_key or os.environ["GEMINI_API_KEY"])
+        if os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").lower() == "true":
+            # Vertex AI: ADC + GOOGLE_CLOUD_PROJECT / GOOGLE_CLOUD_LOCATION を SDK が読む。
+            # Cloud Run では Workload Identity により鍵レス
+            self._client = genai.Client()
+        else:
+            self._client = genai.Client(api_key=api_key or os.environ["GEMINI_API_KEY"])
 
     def decide(
         self,
