@@ -1,8 +1,8 @@
 # ProtoPedia 掲載用ストーリー草稿
 
-> タグ: `findy_hackathon`（必須）ほか候補: `AIエージェント` `Gemini` `CloudRun` `DevOps`
-> 画像: ①UI スクリーンショット（発掘中のタイムライン） ②アーキテクチャ図（docs/architecture.png） ③自動作成された削除 PR のスクリーンショット
-> 動画: YouTube URL（Day 5 に差し込み）
+> タグ: `findy_hackathon`（必須）ほか候補: `AIエージェント` `Gemini` `CloudRun` `VertexAI` `DevOps`
+> 画像: ①UI スクリーンショット（発掘中のタイムライン） ②アーキテクチャ図（docs/architecture.png） ③自動作成された削除 PR ＋🔮Oracle の予言コメントのスクリーンショット
+> 動画: YouTube URL（提出前に差し込み）
 
 ---
 
@@ -40,19 +40,23 @@
 
 史官エージェントの回答は、すべての主張に実在の PR/Issue/コミットへの引用 [n] が付きます。証拠が見つからなければ「分からない」と正直に答える（証拠ゼロのときは LLM に回答させない）、失敗したツール呼び出しの結果を LLM にフィードバックする、早すぎる調査終了は一度差し戻す——live 検証で見つけた LLM の失敗パターンを、プロンプトではなく**構造**で潰しています。
 
-**3. 失効コードの削除 PR 自動作成 — 発掘から行動まで**
+**3. 失効コードの削除 PR 自動作成＋🔮予言 — 発掘から行動、そして安全網まで**
 
-監査官エージェントは「理由が失効した防御的コード」を検出すると、**発掘した証拠を引用した削除 PR を GitHub 上に実際に作成**します。「v2 に移行したら消す」という3年前の約束を、人間の代わりにエージェントが果たします。削除 PR には🔮予言者 Oracle が「このコードが守っていた過去の障害」を注意コメントとして残します。実例: https://github.com/nabe3m/demo-repo/pull/14
+監査官エージェントは「理由が失効した防御的コード」を検出すると、**発掘した証拠を引用した削除 PR を GitHub 上に実際に作成**します。「v2 に移行したら消す」という3年前の約束を、人間の代わりにエージェントが果たします。さらに🔮予言者 Oracle が、そのコードが**かつて守っていた過去の障害**と再発時の兆候・対処を、削除 PR への注意コメントとして残します——「消してよい、ただし歴史を知った上で」。実例: https://github.com/nabe3m/demo-repo/pull/14 （[Oracle の予言コメント](https://github.com/nabe3m/demo-repo/pull/14#issuecomment-4936010078)）
 
-**4. 実装**
+**4. AI の品質をデプロイ前に守る evals ゲート — DevOps × AI の要**
 
-Google Cloud Run（単一サービス・SSE ストリーミング）+ Gemini API（判断: 2.5 Flash / 回答: 2.5 Pro の使い分け）。遡行ループのコアは TDD（37テスト）、回答品質は「正しい一次資料を引用したか」で採点する独自 evals で継続検証。push → Cloud Run の CD 構築済み。
+回答品質を「正しい一次資料を引用できたか」で採点する独自 evals（考古学クイズ5問・LLM の文言ゆらぎに依存しない採点）を、**Cloud Build のデプロイ前ゲート**として実行します（4/5 未満はデプロイ中止）。プロンプト・モデル変更のデグレが本番に届きません。このゲートは開発中に実際のバグを**3つ**捕捉しました。最後の1つは「エージェント自身が作った削除 PR が検索結果を汚染し、史官が一次資料ではなく自分の過去の要約を引用しはじめる」という、エージェントが自律的に成果物を増やすからこそ起きる自己汚染で、evals の失敗がなければ気づけない挙動でした。
+
+**5. 実装**
+
+Google Cloud Run（単一サービス・SSE ストリーミング）+ Gemini（判断: 2.5 Flash / 回答: 2.5 Pro の使い分け）。**LLM は Vertex AI 経由（Workload Identity で鍵レス）**、env 切替1つで Developer API にもフォールバック可能。遡行ループのコアは TDD（48テスト）、push → evals ゲート → Cloud Run の CD を構築。取得結果は2層キャッシュでレート制限を回避、シークレットは Secret Manager 管理。
 
 ## システム構成
 
 （docs/architecture.png を貼付）
 
-開発者 → Cloud Run（React UI + 調査官/史官/監査官）→ Gemini API / GitHub API。取得結果は2層キャッシュでレート制限を回避。シークレットは Secret Manager 管理。
+開発者 → Cloud Run（React UI + 調査官/史官/監査官/🔮Oracle）→ Vertex AI（Gemini）/ GitHub API。取得結果は2層キャッシュでレート制限を回避。シークレットは Secret Manager 管理、LLM 認証は Workload Identity で鍵レス。
 
 ## デモ
 
