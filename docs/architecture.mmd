@@ -9,36 +9,42 @@ flowchart LR
             EX["🔍 調査官 Excavator<br/>blame→コミット→PR→Issue を<br/>自律遡行（毎ステップ LLM が判断）"]
             HI["📜 史官 Historian<br/>証拠チェーンから<br/>出典リンク付き回答を合成"]
             AU["⚖️ 監査官 Auditor<br/>失効した防御的コードを検出し<br/>削除 PR を自動作成"]
+            OR["🔮 予言者 Oracle<br/>守っていた過去の障害を<br/>削除 PR に予言コメント"]
         end
         CACHE[("キャッシュ<br/>メモリ + ディスク")]
     end
 
     subgraph gcp["Google Cloud"]
-        GEMINI["✨ Gemini API<br/>判断: 2.5 Flash<br/>回答: 2.5 Pro"]
-        SM["Secret Manager"]
-        CB["Cloud Build<br/>push → deploy CD"]
+        VERTEX["✨ Vertex AI（Gemini）<br/>判断: 2.5 Flash / 回答: 2.5 Pro<br/>Workload Identity で鍵レス"]
+        SM["Secret Manager<br/>GitHub トークン / API キー(予備)"]
+        CB["Cloud Build<br/>push → evals 品質ゲート → deploy"]
         AR["Artifact Registry"]
     end
 
     subgraph github["🐙 GitHub"]
         REPO["対象リポジトリ<br/>git 履歴 / PR 議論 / Issue"]
-        PR["🎉 削除 PR<br/>（証拠リンク引用付き）"]
+        PR["🎉 削除 PR + 🔮 予言コメント<br/>（証拠リンク引用付き）"]
     end
 
     Q -->|SSE で調査過程が流れる| UI
     UI --> EX
-    EX -->|"次にどこを掘る?"| GEMINI
+    EX -->|"次にどこを掘る?"| VERTEX
     EX -->|REST / GraphQL| CACHE
     CACHE --> REPO
     EX -->|証拠チェーン| HI
-    HI --> GEMINI
+    HI --> VERTEX
     EX -->|証拠チェーン| AU
-    AU -->|判決| GEMINI
+    AU -->|判決| VERTEX
     AU -->|ブランチ + 削除コミット| PR
-    SM -.->|API キー注入| cloudrun
-    CB -.-> AR -.->|イメージ| cloudrun
+    AU -->|失効を確認したら| OR
+    OR -->|予言| VERTEX
+    OR -->|注意コメント| PR
+    SM -.->|GitHub トークン注入| cloudrun
+    cloudrun -.->|Workload Identity| VERTEX
+    CB -.->|evals 4/5 未満は中止| AR -.->|イメージ| cloudrun
 
     style cloudrun fill:#e8f0fe,stroke:#4285f4,stroke-width:3px
-    style GEMINI fill:#fef7e0,stroke:#f9ab00,stroke-width:3px
+    style VERTEX fill:#fef7e0,stroke:#f9ab00,stroke-width:3px
     style agents fill:#ffffff,stroke:#5f6368
+    style OR fill:#f3e8fd,stroke:#a855f7,stroke-width:2px
     style PR fill:#e6f4ea,stroke:#34a853,stroke-width:2px
