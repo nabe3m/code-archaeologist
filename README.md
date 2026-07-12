@@ -53,6 +53,8 @@ Code Archaeologist は、この「コードの考古学」を AI エージェン
 - **単一 Cloud Run サービス**: FastAPI が React SPA を配信し、調査過程は **SSE** でストリーム。デモ URL 1つで完結
 - **調査過程 = 構造化イベント**: 調査官の全判断（何を根拠に次へ掘ったか）を `dig_decision` / `evidence_found` 等のイベントとして発行。UI・構造化ログ・デモ動画の素材が1つの仕組みから出る
 - **GitHub キャッシュ**（メモリ + ディスク）: デモがレート制限で死なない
+- **書き込みの許可リスト**: デモ URL は認証なし公開のため、GitHub へ書き込む監査（削除 PR / コメント作成）は許可リスト内リポジトリ（`AUDIT_WRITE_ALLOWLIST`、既定 `nabe3m/demo-repo`）のみに制限。発掘（読み取り）は任意の公開リポジトリで利用可。共有トークンで任意 repo に PR を乱造されるのを防ぐ
+- **匿名コストの上限**: 高コストな LLM 調査（発掘 / 監査）を、インスタンス内スロットリング（同時実行数 `DIG_MAX_CONCURRENT`・IP あたりレート `DIG_PER_IP_PER_MIN`／分）で絞り、Cloud Run の `--max-instances` と併せて公開デモの LLM 総コストを頭打ちにする。超過時は 429 を返す
 - **LLM は Vertex AI 経由（鍵レス）**: Cloud Run のサービスアカウント + Workload Identity で認証し、ランタイムは Gemini の API キーを持たない。`GOOGLE_GENAI_USE_VERTEXAI` の切替1つで Developer API にも即戻せる
 - **CD + 品質ゲート**: `cloudbuild.yaml` により push → ビルド → **evals をデプロイ前に実行（4/5 未満はデプロイ中止）** → Cloud Run デプロイ。プロンプト・モデル変更のデグレが本番に届かない。シークレットは Secret Manager
 - ただし evals ゲートは Developer API キーで実行されており、本番の Vertex AI 認証経路自体は検証しない（Vertex 側の障害時は `GOOGLE_GENAI_USE_VERTEXAI=false` への env 切替1コマンドでロールバック可能）

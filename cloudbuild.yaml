@@ -39,9 +39,14 @@ steps:
       - --set-secrets=GEMINI_API_KEY=gemini-api-key:latest,GITHUB_TOKEN=github-token:latest
       # LLM は Vertex AI 経由（鍵レス）。問題時は GOOGLE_GENAI_USE_VERTEXAI=false で
       # 上の API キー（フォールバックとして残置）に即戻せる
-      - --set-env-vars=GOOGLE_GENAI_USE_VERTEXAI=true,GOOGLE_CLOUD_PROJECT=code-archaeologist-hackathon,GOOGLE_CLOUD_LOCATION=global
+      # 監査(GitHub 書き込み)は許可 repo のみ。公開エンドポイントを匿名で叩かれても
+      # 共有トークンで任意 repo に PR 乱造されない。dig(読み取り)は制限しない
+      - --set-env-vars=GOOGLE_GENAI_USE_VERTEXAI=true,GOOGLE_CLOUD_PROJECT=code-archaeologist-hackathon,GOOGLE_CLOUD_LOCATION=global,AUDIT_WRITE_ALLOWLIST=nabe3m/demo-repo
       - --memory=1Gi
       - --timeout=300
+      # 匿名コストの総量上限: インスタンス内スロットリング（DIG_MAX_CONCURRENT /
+      # DIG_PER_IP_PER_MIN）× インスタンス数上限で、公開デモの LLM コストを頭打ちにする
+      - --max-instances=3
 
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/app/${_SERVICE}:$SHORT_SHA

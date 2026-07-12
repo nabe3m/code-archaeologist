@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -17,11 +17,45 @@ from .github_tools import GitHubToolbox
 from .historian import Historian
 from .llm import GeminiAgents
 from .models import EvidenceChain
+from .throttle import Throttle
 
 load_dotenv()
 app = FastAPI(title="Code Archaeologist")
 
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+
+# 監査（＝実際に GitHub へブランチ/コミット/PR/コメントを書き込む）を許可する
+# リポジトリの許可リスト。公開エンドポイント（--allow-unauthenticated）を匿名の
+# 誰でも叩けるため、共有 GITHUB_TOKEN で任意 repo に PR 乱造されるのを防ぐ。
+# dig（読み取りのみ）は制限しない。カンマ区切り env で上書き可。
+_AUDIT_ALLOWLIST = {
+    r.strip().lower()
+    for r in os.environ.get("AUDIT_WRITE_ALLOWLIST", "nabe3m/demo-repo").split(",")
+    if r.strip()
+}
+
+# 匿名コスト対策: 高コストな LLM 調査（dig / audit）を並列本数と IP レートで絞る。
+# インスタンスごとに効き、Cloud Run の --max-instances と併せて総コストを上限する。
+_THROTTLE = Throttle(
+    max_concurrent=int(os.environ.get("DIG_MAX_CONCURRENT", "4")),
+    per_ip_limit=int(os.environ.get("DIG_PER_IP_PER_MIN", "10")),
+    window_seconds=60,
+)
+
+
+def _client_ip(request: Request) -> str:
+    # Cloud Run は "X-Forwarded-For: <client>, <lb>" を付ける。先頭が実クライアント
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _reject_reason(reason: str) -> str:
+    if reason == "rate":
+        return "リクエストが多すぎます。少し待ってから再度お試しください。"
+    return "現在アクセスが集中しています。少し待ってから再度お試しください。"
+
 
 _PLACEHOLDER = """<!doctype html>
 <meta charset="utf-8">
@@ -50,9 +84,9 @@ def get_file(repo: str, path: str):
     if "/" not in repo:
         raise HTTPException(400, "repo は owner/name 形式で指定してください")
     owner, name = repo.split("/", 1)
-    toolbox = GitHubToolbox(token=os.environ["GITHUB_TOKEN"])
     try:
-        return {"content": toolbox.get_file(owner, name, path)}
+        with GitHubToolbox(token=os.environ["GITHUB_TOKEN"]) as toolbox:
+            return {"content": toolbox.get_file(owner, name, path)}
     except Exception as exc:
         raise HTTPException(404, f"ファイルを取得できません: {exc}") from exc
 
@@ -63,23 +97,21 @@ def tree(repo: str):
     if "/" not in repo:
         raise HTTPException(400, "repo は owner/name 形式で指定してください")
     owner, name = repo.split("/", 1)
-    toolbox = GitHubToolbox(token=os.environ["GITHUB_TOKEN"])
     try:
-        return {"paths": toolbox.list_files(owner, name)}
+        with GitHubToolbox(token=os.environ["GITHUB_TOKEN"]) as toolbox:
+            return {"paths": toolbox.list_files(owner, name)}
     except Exception as exc:
         raise HTTPException(404, f"リポジトリを読み取れません: {exc}") from exc
 
 
 @app.get("/api/dig")
-def dig(repo: str, path: str, line: int, q: str, line_end: int | None = None):
+def dig(request: Request, repo: str, path: str, line: int, q: str, line_end: int | None = None):
     if "/" not in repo:
         raise HTTPException(400, "repo は owner/name 形式で指定してください")
     owner, name = repo.split("/", 1)
     agents = GeminiAgents()
-    excavator = Excavator(
-        toolbox=GitHubToolbox(token=os.environ["GITHUB_TOKEN"]),
-        decide=agents.decide,
-    )
+    toolbox = GitHubToolbox(token=os.environ["GITHUB_TOKEN"])
+    excavator = Excavator(toolbox=toolbox, decide=agents.decide)
 
     def stream():
         chain = EvidenceChain()
@@ -92,7 +124,17 @@ def dig(repo: str, path: str, line: int, q: str, line_end: int | None = None):
             yield _sse({"type": "answer", "payload": answer.model_dump()})
         except Exception as exc:  # SSE は途中で HTTP エラーを返せないためイベントで通知
             yield _sse({"type": "error", "payload": {"message": str(exc)}})
+        finally:
+            # クライアント切断時も GeneratorExit で必ず走る: スロット解放と接続クローズ
+            toolbox.close()
+            _THROTTLE.release()
 
+    # スロット取得は返却直前に置く: 取得後〜返却前で例外が起きると stream の
+    # finally が走らずスロットが漏れるため、間に例外源を挟まない
+    reason = _THROTTLE.try_acquire(_client_ip(request))
+    if reason:
+        toolbox.close()  # 拒否時は stream が起動せず finally が走らないためここで閉じる
+        raise HTTPException(429, _reject_reason(reason))
     return StreamingResponse(
         stream(),
         media_type="text/event-stream",
@@ -101,10 +143,17 @@ def dig(repo: str, path: str, line: int, q: str, line_end: int | None = None):
 
 
 @app.get("/api/audit")
-def audit(repo: str, path: str):
+def audit(request: Request, repo: str, path: str):
     """監査官: 失効した防御的コードを検出し、削除 PR を作成する過程を SSE で流す。"""
     if "/" not in repo:
         raise HTTPException(400, "repo は owner/name 形式で指定してください")
+    # 監査は GitHub への書き込みを伴うため、許可リスト内の repo のみ受け付ける
+    if repo.lower() not in _AUDIT_ALLOWLIST:
+        raise HTTPException(
+            403,
+            "監査（書き込みを伴う）は許可されたデモ用リポジトリでのみ実行できます。"
+            "発掘（読み取り）は任意の公開リポジトリで利用できます。",
+        )
     from .auditor import Auditor
 
     owner, name = repo.split("/", 1)
@@ -126,7 +175,16 @@ def audit(repo: str, path: str):
                 yield _sse(event.model_dump())
         except Exception as exc:
             yield _sse({"type": "error", "payload": {"message": str(exc)}})
+        finally:
+            # クライアント切断時も GeneratorExit で必ず走る: スロット解放と接続クローズ
+            toolbox.close()
+            _THROTTLE.release()
 
+    # スロット取得は返却直前（dig と同じ理由: 取得後の例外でのリークを防ぐ）
+    reason = _THROTTLE.try_acquire(_client_ip(request))
+    if reason:
+        toolbox.close()  # 拒否時は stream が起動せず finally が走らないためここで閉じる
+        raise HTTPException(429, _reject_reason(reason))
     return StreamingResponse(
         stream(),
         media_type="text/event-stream",

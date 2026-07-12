@@ -81,6 +81,16 @@ class GitHubToolbox:
             timeout=30,
         )
 
+    def close(self) -> None:
+        """内部 httpx.Client を閉じる（リクエストごとに生成する web 側でコネクションを解放）。"""
+        self._client.close()
+
+    def __enter__(self) -> "GitHubToolbox":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
     def _get(self, path: str) -> dict | list:
         cached = self._cache.get(path)
         if cached is not None:
