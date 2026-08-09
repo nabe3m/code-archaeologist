@@ -27,6 +27,9 @@ EventType = Literal[
     "verdict",
     "pr_created",
     "oracle",
+    # レビュー officer（PR で削除されようとしている防御的コード）
+    "review_target",
+    "review_finding",
 ]
 
 

@@ -51,6 +51,53 @@ class Auditor:
         self._judge = judge
         self._prophesy = prophesy
 
+    def investigate(
+        self, owner: str, repo: str, path: str, candidate: Candidate, code: str
+    ) -> Iterator[DigEvent]:
+        """1 候補を「発掘 → 失効確認（強制）→ 判決」まで通す。
+
+        監査官（失効コードを消す出口）とレビュー officer（まだ生きているコードが
+        消されるのを止める入口）で唯一の判定経路を共有するため切り出してある。
+        イベントを yield しつつ、最終的に (chain, verdict) を返す。
+        """
+        chain = EvidenceChain()
+        question = (
+            f"{path}:{candidate.line} の `{candidate.snippet}` はなぜ存在する? "
+            "その理由となった制約は現在も有効か?"
+        )
+        for event in self._dig(owner, repo, path, candidate.line, question):
+            if event.type == "done":
+                chain = EvidenceChain.model_validate(event.payload["chain"])
+            yield event
+
+        # 失効確認（強制実行）: 当時の制約がその後解消されていないかを前方調査する
+        query = self._forward_query(chain)
+        hits = self._toolbox.search_issues(owner, repo, query)
+        for hit in hits[:_MAX_FORWARD_HITS]:
+            try:
+                if hit["is_pr"]:
+                    result = self._toolbox.get_pr(owner, repo, hit["number"])
+                    found = [result.evidence, *result.comments]
+                else:
+                    result = self._toolbox.get_issue(owner, repo, hit["number"])
+                    found = [result.evidence, *result.comments]
+            except Exception as exc:
+                yield DigEvent(type="error", payload={"message": str(exc)})
+                continue
+            for evidence in found:
+                if chain.add(evidence):
+                    yield DigEvent(
+                        type="evidence_found",
+                        payload={"evidence": evidence.model_dump()},
+                    )
+
+        verdict = self._judge(candidate, chain, code)
+        yield DigEvent(
+            type="verdict",
+            payload={**verdict.model_dump(), "candidate": candidate.model_dump()},
+        )
+        return chain, verdict
+
     def audit(self, owner: str, repo: str, path: str) -> Iterator[DigEvent]:
         code = self._toolbox.get_file(owner, repo, path)
         candidates = self._find_candidates(path, code)
@@ -58,41 +105,8 @@ class Auditor:
             yield DigEvent(type="audit_candidate", payload=candidate.model_dump())
 
         for candidate in candidates:
-            chain = EvidenceChain()
-            question = (
-                f"{path}:{candidate.line} の `{candidate.snippet}` はなぜ存在する? "
-                "その理由となった制約は現在も有効か?"
-            )
-            for event in self._dig(owner, repo, path, candidate.line, question):
-                if event.type == "done":
-                    chain = EvidenceChain.model_validate(event.payload["chain"])
-                yield event
-
-            # 失効確認（強制実行）: 当時の制約がその後解消されていないかを前方調査する
-            query = self._forward_query(chain)
-            hits = self._toolbox.search_issues(owner, repo, query)
-            for hit in hits[:_MAX_FORWARD_HITS]:
-                try:
-                    if hit["is_pr"]:
-                        result = self._toolbox.get_pr(owner, repo, hit["number"])
-                        found = [result.evidence, *result.comments]
-                    else:
-                        result = self._toolbox.get_issue(owner, repo, hit["number"])
-                        found = [result.evidence, *result.comments]
-                except Exception as exc:
-                    yield DigEvent(type="error", payload={"message": str(exc)})
-                    continue
-                for evidence in found:
-                    if chain.add(evidence):
-                        yield DigEvent(
-                            type="evidence_found",
-                            payload={"evidence": evidence.model_dump()},
-                        )
-
-            verdict = self._judge(candidate, chain, code)
-            yield DigEvent(
-                type="verdict",
-                payload={**verdict.model_dump(), "candidate": candidate.model_dump()},
+            chain, verdict = yield from self.investigate(
+                owner, repo, path, candidate, code
             )
 
             if verdict.expired and verdict.lines_to_remove:

@@ -63,6 +63,16 @@ class IssueResult(BaseModel):
     comments: list[Evidence]
 
 
+class PrFile(BaseModel):
+    path: str
+    patch: str
+
+
+class PrDiff(BaseModel):
+    base_sha: str
+    files: list[PrFile]
+
+
 class GitHubToolbox:
     def __init__(
         self,
@@ -294,6 +304,25 @@ class GitHubToolbox:
             {"title": title, "body": body, "head": branch, "base": base},
         )
         return {"number": pr["number"], "url": pr["html_url"]}
+
+    def get_pr_diff(self, owner: str, repo: str, number: int) -> PrDiff:
+        """PR の変更ファイルと base 側 SHA を取得する（レビュー時の削除行特定用）。
+
+        PR は開いている間ずっと更新されうるのでキャッシュを通さない。
+        patch を持たないファイル（バイナリ・巨大差分）は対象外。
+        """
+        pr = self._get_fresh(f"/repos/{owner}/{repo}/pulls/{number}")
+        files = self._get_fresh(
+            f"/repos/{owner}/{repo}/pulls/{number}/files?per_page=100"
+        )
+        return PrDiff(
+            base_sha=pr["base"]["sha"],
+            files=[
+                PrFile(path=f["filename"], patch=f["patch"])
+                for f in files
+                if f.get("patch")
+            ],
+        )
 
     def post_pr_comment(self, owner: str, repo: str, number: int, body: str) -> dict:
         """PR にコメントを投稿する(Oracle の予言の出口)。PR コメントは Issues API を使う。"""

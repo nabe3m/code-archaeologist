@@ -1,0 +1,55 @@
+# Code Archaeologist — PR レビュー officer
+#
+# PR で「防御的コード」が削除されようとしていないかを検査し、
+# その行の歴史（blame → コミット → PR → Issue）を遡行して判定を PR にコメントする。
+#
+# - 制約がまだ有効 → 🚨 この削除は危険です（守っている障害を Oracle が説明）
+# - 制約が失効済み → ✅ この削除は歴史的に妥当です（根拠となる一次資料を引用）
+#
+# 導入するリポジトリの .github/workflows/ にこのファイルを置き、
+# リポジトリ Secrets に GEMINI_API_KEY を登録してください。
+#
+# 既定では CI を落としません。消してよいかの最終判断は人間のレビュアーが持つべきで、
+# LLM の判定でマージを止めるのは越権だからです。ブロックしたい場合は
+# 実行コマンドに --fail-on-warning を足してください。
+
+name: Code Archaeologist Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: archaeologist-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # 検査対象リポジトリのチェックアウトは不要（すべて GitHub API 経由で読む）。
+      # ここでチェックアウトするのはツール本体。
+      - uses: actions/checkout@v4
+        with:
+          repository: nabe3m/code-archaeologist
+          ref: main
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --frozen --no-dev
+
+      - name: Review deleted defensive code
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          uv run --no-sync archaeologist-review \
+            "${{ github.repository }}" \
+            "${{ github.event.pull_request.number }}"
