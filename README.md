@@ -83,7 +83,10 @@ PR の削除行から防御的コードを検出 → base 側で歴史を遡行 
 
 同じファイル・同じエージェント・同じ判定経路で、**片方は止め、片方は通す**。これが「防御的コードを消す機械ではない」ことの実証です。
 
-実行の様子: [`docs/demo-pr-review.mp4`](docs/demo-pr-review.mp4)（遡行から判定まで、CLI 実行の録画）
+### 動画
+
+- [`docs/demo-pr-review-github.mp4`](docs/demo-pr-review-github.mp4) — **PR を開く → チェックが走る → 警告が現れる**まで、GitHub 上の実際の流れ（[PR #20](https://github.com/nabe3m/demo-repo/pull/20) の実走）
+- [`docs/demo-pr-review.mp4`](docs/demo-pr-review.mp4) — 遡行の全判断から判定までを CLI で追った録画
 
 ```bash
 # ローカルでも同じ判定を実行できる（--dry-run でコメントを投稿しない）
