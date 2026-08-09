@@ -71,9 +71,11 @@ PR の削除行から防御的コードを検出 → base 側で歴史を遡行 
 | 制約がまだ有効 | 🚨 **この削除は危険です** — 何を守っているか、消すと何が起きるかを Oracle が説明 |
 | 制約が失効済み | ✅ **この削除は歴史的に妥当です** — 失効を裏づける一次資料を引用 |
 
-**実例**: 決済リトライを削除する [PR #17](https://github.com/nabe3m/demo-repo/pull/17) に対する[🚨警告コメント](https://github.com/nabe3m/demo-repo/pull/17#issuecomment-5230143174)（Issue #9 / PR #10 を引用して「レート制限は増枠予定なし」＝制約は現在も有効と判定）。
+**実例**: 決済リトライを削除する [PR #18](https://github.com/nabe3m/demo-repo/pull/18) に対し、GitHub Actions が発火して `github-actions[bot]` が[🚨警告コメント](https://github.com/nabe3m/demo-repo/pull/18#issuecomment-5230218350)を投稿しています。**PR を開いただけで、誰も質問していません。** Issue #9 / PR #10 を引用し「レート制限は増枠予定なし」＝制約は現在も有効と判定しました。
 
-実行の様子: [`docs/demo-pr-review.mp4`](docs/demo-pr-review.mp4)
+![PR レビューでの警告](docs/screenshot-pr-review-warning.jpg)
+
+実行の様子: [`docs/demo-pr-review.mp4`](docs/demo-pr-review.mp4)（遡行から判定まで、CLI 実行の録画）
 
 ```bash
 # ローカルでも同じ判定を実行できる（--dry-run でコメントを投稿しない）
