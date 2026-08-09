@@ -25,6 +25,8 @@ ICONS = {
     "verdict": "⚖️",
     "pr_created": "🎉",
     "oracle": "🔮",
+    "review_target": "🩺",
+    "review_finding": "⚖️",
 }
 
 
@@ -128,6 +130,84 @@ def main_audit() -> None:
             case "oracle":
                 print(f"{icon} 予言を PR にコメントしました: {p['comment_url']}")
                 print(f"   守っていた障害: {p['guarded_incident']}")
+
+
+def main_review() -> None:
+    """レビュー officer CLI: PR で消されようとしている防御的コードを検査する。
+
+    人が質問しなくても pull_request で発火させるための入口（GitHub Actions 用）。
+    既定では判定をコメントするだけで CI は落とさない — 消してよいかの最終判断は
+    人間のレビュアーが持つべきで、LLM の判定でマージを止めるのは越権だから。
+    """
+    load_dotenv()
+    parser = argparse.ArgumentParser(description="Code Archaeologist PR Reviewer CLI")
+    parser.add_argument("repo", help="owner/name 形式")
+    parser.add_argument("number", type=int, help="レビュー対象の PR 番号")
+    parser.add_argument(
+        "--fail-on-warning", action="store_true",
+        help="まだ有効な防御的コードの削除を検出したら exit 1 にする",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="PR にコメントを投稿しない",
+    )
+    args = parser.parse_args()
+
+    for var in ("GEMINI_API_KEY", "GITHUB_TOKEN"):
+        if not os.environ.get(var):
+            sys.exit(f"環境変数 {var} が未設定です（.env を確認してください）")
+
+    from .auditor import Auditor
+    from .reviewer import PrReviewer
+
+    owner, repo = args.repo.split("/", 1)
+    agents = GeminiAgents()
+    toolbox = GitHubToolbox(token=os.environ["GITHUB_TOKEN"])
+    excavator = Excavator(toolbox=toolbox, decide=agents.decide)
+    auditor = Auditor(
+        toolbox=toolbox,
+        dig=excavator.dig,
+        find_candidates=agents.find_candidates,
+        forward_query=agents.forward_query,
+        judge=agents.judge,
+        prophesy=agents.prophesy,
+    )
+    reviewer = PrReviewer(
+        toolbox=toolbox,
+        investigate=auditor.investigate,
+        find_candidates=agents.find_candidates,
+        prophesy=agents.prophesy,
+        post=not args.dry_run,
+    )
+
+    warnings = 0
+    for event in reviewer.review(owner, repo, args.number):
+        icon = ICONS.get(event.type, "·")
+        p = event.payload
+        match event.type:
+            case "review_target":
+                print(f"{icon} 削除されようとしている防御的コード: "
+                      f"{p['path']}:{p['line']} `{p['snippet']}`")
+            case "dig_decision":
+                print(f"{icon} {p['reason']}  →  {p['tool']}({p['args']})")
+            case "evidence_found":
+                e = p["evidence"]
+                print(f"{icon} 発掘: {e['kind']} {e['ref']} — {e['title']}")
+            case "error":
+                print(f"{icon} {p['message']}")
+            case "verdict":
+                status = "失効済み" if p["expired"] else "現在も有効"
+                print(f"{icon} 判決: {status}\n   {p['justification']}")
+            case "review_finding":
+                if p["verdict"]["expired"]:
+                    print(f"✅ 削除は歴史的に妥当です → {p['comment_url']}")
+                else:
+                    warnings += 1
+                    print(f"🚨 この削除は危険です（制約は現在も有効）"
+                          f" → {p['comment_url']}")
+
+    print(f"\n== 警告 {warnings} 件 ==")
+    if warnings and args.fail_on_warning:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
