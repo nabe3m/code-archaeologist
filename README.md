@@ -71,9 +71,17 @@ PR の削除行から防御的コードを検出 → base 側で歴史を遡行 
 | 制約がまだ有効 | 🚨 **この削除は危険です** — 何を守っているか、消すと何が起きるかを Oracle が説明 |
 | 制約が失効済み | ✅ **この削除は歴史的に妥当です** — 失効を裏づける一次資料を引用 |
 
-**実例**: 決済リトライを削除する [PR #18](https://github.com/nabe3m/demo-repo/pull/18) に対し、GitHub Actions が発火して `github-actions[bot]` が[🚨警告コメント](https://github.com/nabe3m/demo-repo/pull/18#issuecomment-5230218350)を投稿しています。**PR を開いただけで、誰も質問していません。** Issue #9 / PR #10 を引用し「レート制限は増枠予定なし」＝制約は現在も有効と判定しました。
+**実例**: どちらも **PR を開いただけで、誰も質問していません。** Actions が自動で発火し、`github-actions[bot]` が判定を投稿しています。
+
+**① 消してはいけない場合** — 決済リトライを削除する [PR #18](https://github.com/nabe3m/demo-repo/pull/18) への[🚨警告](https://github.com/nabe3m/demo-repo/pull/18#issuecomment-5230218350)。Issue #9 / PR #10 を引用し「レート制限は増枠予定なし」＝制約は現在も有効と判定。
 
 ![PR レビューでの警告](docs/screenshot-pr-review-warning.jpg)
+
+**② 消してよい場合** — `sleep(3)` を削除する [PR #19](https://github.com/nabe3m/demo-repo/pull/19) への[✅承認](https://github.com/nabe3m/demo-repo/pull/19#issuecomment-5230246906)。PR #4 の v2 移行（read-your-writes 保証）で制約が失効したと判定し、**「sleep の削除は別タスクにさせてください」という果たされなかった約束のコメントまで証拠として引用**しています。
+
+![PR レビューでの承認](docs/screenshot-pr-review-approved.jpg)
+
+同じファイル・同じエージェント・同じ判定経路で、**片方は止め、片方は通す**。これが「防御的コードを消す機械ではない」ことの実証です。
 
 実行の様子: [`docs/demo-pr-review.mp4`](docs/demo-pr-review.mp4)（遡行から判定まで、CLI 実行の録画）
 
