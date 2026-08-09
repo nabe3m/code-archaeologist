@@ -15,6 +15,10 @@ EvidenceKind = Literal[
 # 掘り先候補から除外する（エージェント自身の成果物を一次資料として扱わない）
 AUDITOR_PR_TITLE_PREFIX = "chore: 理由が失効した防御的コードを削除"
 
+# レビュー officer が投稿するコメントに埋め込む不可視マーカー。
+# 自分の過去の出力を一次資料として引用しないための目印（自己汚染防止）。
+REVIEW_COMMENT_MARKER = "<!-- code-archaeologist:review -->"
+
 EventType = Literal[
     "dig_started",
     "dig_decision",

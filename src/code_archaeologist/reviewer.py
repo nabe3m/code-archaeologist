@@ -18,11 +18,9 @@ from collections.abc import Callable, Iterator
 from pydantic import BaseModel
 
 from .auditor import Candidate, Verdict
-from .models import DigEvent, EvidenceChain, Prophecy
+from .models import REVIEW_COMMENT_MARKER, DigEvent, EvidenceChain, Prophecy
 
 _HUNK = re.compile(r"^@@ -(\d+)(?:,\d+)? \+")
-
-REVIEW_COMMENT_MARKER = "<!-- code-archaeologist:review -->"
 
 
 def removed_lines(patch: str) -> set[int]:
@@ -73,6 +71,14 @@ class PrReviewer:
         self._post = post
 
     def review(self, owner: str, repo: str, number: int) -> Iterator[DigEvent]:
+        # 審査中の PR を前方検索から締め出す。これが無いと、前方検索が自分の
+        # 立てた PR を掘り当て、自分が投稿した警告コメントを「一次資料」として
+        # 引用しはじめる（実測済み: demo-repo #17 で判定理由に自分の警告が
+        # 証拠 [7] として混入した）。
+        exclude = getattr(self._toolbox, "exclude_numbers", None)
+        if exclude is not None:
+            exclude.add(number)
+
         diff = self._toolbox.get_pr_diff(owner, repo, number)
 
         for pr_file in diff.files:

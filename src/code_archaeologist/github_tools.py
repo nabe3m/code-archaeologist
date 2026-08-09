@@ -13,7 +13,7 @@ import httpx
 from pydantic import BaseModel
 
 from .cache import Cache
-from .models import AUDITOR_PR_TITLE_PREFIX, Evidence
+from .models import AUDITOR_PR_TITLE_PREFIX, REVIEW_COMMENT_MARKER, Evidence
 
 API = "https://api.github.com"
 
@@ -82,6 +82,10 @@ class GitHubToolbox:
     ) -> None:
         self._cache = cache or Cache(Path("/tmp/code-archaeologist-cache"))
         self._head_cache: dict[tuple[str, str], str] = {}
+        # 検索結果から落とす Issue/PR 番号。レビュー officer が「いま審査している
+        # PR」を自分で掘り当て、自分が書いた警告コメントを一次資料として引用する
+        # 自己参照を防ぐ。
+        self.exclude_numbers: set[int] = set()
         self._client = httpx.Client(
             transport=transport,
             headers={
@@ -213,8 +217,13 @@ class GitHubToolbox:
                 date=c["created_at"],
             )
             for c in raw_comments
+            if REVIEW_COMMENT_MARKER not in (c["body"] or "")
         ]
-        texts = [pr.get("body") or ""] + [(c["body"] or "") for c in raw_comments]
+        texts = [pr.get("body") or ""] + [
+            (c["body"] or "")
+            for c in raw_comments
+            if REVIEW_COMMENT_MARKER not in (c["body"] or "")
+        ]
         referenced = {
             int(m) for text in texts for m in _ISSUE_REF.findall(text)
         } - {number}
@@ -352,6 +361,8 @@ class GitHubToolbox:
             # 増えるたびに検索を汚染し、史官が一次資料でなく「自分の過去の要約」を
             # 引用するようになる（実測で evals 5/5 → 2/5 まで劣化した）
             if not item["title"].startswith(AUDITOR_PR_TITLE_PREFIX)
+            # 審査中の PR 自身も同じ理由で除外する
+            and item["number"] not in self.exclude_numbers
         ]
 
     def list_files(self, owner: str, repo: str) -> list[str]:
@@ -381,6 +392,7 @@ class GitHubToolbox:
                 date=c["created_at"],
             )
             for c in raw_comments
+            if REVIEW_COMMENT_MARKER not in (c["body"] or "")
         ]
         return IssueResult(
             evidence=Evidence(

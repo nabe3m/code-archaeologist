@@ -101,7 +101,16 @@ def toolbox(tmp_path, requests_seen, head_state):
                         "html_url": "https://github.com/o/r/pull/42#issuecomment-1",
                         "user": {"login": "carol"},
                         "created_at": "2019-02-28T10:00:00Z",
-                    }
+                    },
+                    {
+                        # レビュー officer 自身が過去に投稿した警告。#99 への
+                        # 言及ごと無視されなければならない
+                        "body": "<!-- code-archaeologist:review -->\n"
+                                "## 🚨 この削除は危険です\n関連: #99",
+                        "html_url": "https://github.com/o/r/pull/42#issuecomment-2",
+                        "user": {"login": "github-actions[bot]"},
+                        "created_at": "2019-03-01T10:00:00Z",
+                    },
                 ],
             )
         if path == "/repos/o/r/issues/12":
@@ -235,6 +244,28 @@ def test_search_issues_excludes_own_deletion_prs(toolbox):
     hits = toolbox.search_issues("o", "r", "inventory v2")
     assert all(not h["title"].startswith("chore: 理由が失効した防御的コード") for h in hits)
     assert [h["number"] for h in hits] == [3, 4]
+
+
+def test_get_pr_skips_own_review_comments(toolbox):
+    """レビュー officer 自身の警告コメントを一次資料として拾わない。
+
+    これが無いと、審査中の PR を前方検索で掘り当てたとき、自分が数分前に
+    書いた警告を「証拠」として引用しはじめる（実測: demo-repo #17 で
+    判定理由に自分の警告が [7] として混入した）。
+    """
+    result = toolbox.get_pr("o", "r", 42)
+    assert [c.author for c in result.comments] == ["carol"]
+    # マーカー付きコメントが言及する #99 も掘り先候補にしない
+    assert 99 not in result.referenced_issues
+
+
+def test_search_issues_excludes_registered_numbers(toolbox):
+    """審査中の PR 自身を検索結果から締め出す。"""
+    assert 4 in [h["number"] for h in toolbox.search_issues("o", "r", "inventory v2")]
+    toolbox.exclude_numbers.add(4)
+    # フィルタはキャッシュの後段なので、同じクエリの再取得でも効く
+    hits = toolbox.search_issues("o", "r", "inventory v2")
+    assert [h["number"] for h in hits] == [3]
 
 
 def test_search_issues_returns_hits_with_pr_flag(toolbox):

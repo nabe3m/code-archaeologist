@@ -44,6 +44,7 @@ class StubToolbox:
     def __init__(self, patch=PATCH):
         self.calls = []
         self.comments = []
+        self.exclude_numbers = set()
         self._patch = patch
 
     def get_pr_diff(self, owner, repo, number):
@@ -243,6 +244,13 @@ def test_oracle_stays_silent_without_evidence():
     list(reviewer.review("o", "r", 42))
     assert not called
     assert "この行が守っているもの" not in toolbox.comments[0]
+
+
+def test_pr_under_review_is_excluded_from_forward_search():
+    """審査中の PR を自分で掘り当て、自分の警告を引用するのを防ぐ。"""
+    toolbox = StubToolbox()
+    list(make_reviewer(toolbox).review("o", "r", 42))
+    assert 42 in toolbox.exclude_numbers
 
 
 def test_files_without_removals_are_skipped_entirely():
